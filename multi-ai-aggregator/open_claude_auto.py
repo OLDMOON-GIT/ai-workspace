@@ -111,9 +111,9 @@ async def open_claude_with_prompt(prompt_text: str):
             await asyncio.sleep(0.5)
 
             print("[INFO] 프롬프트 입력 중...")
-            # 프롬프트 입력
-            await page.keyboard.type(prompt_text, delay=10)
-            await asyncio.sleep(2)
+            # 프롬프트 한꺼번에 붙여넣기
+            await input_element.fill(prompt_text)
+            await asyncio.sleep(1)
 
             print("[INFO] 전송 중...")
             # Enter 키로 전송
@@ -146,8 +146,22 @@ async def open_claude_with_prompt(prompt_text: str):
             return False
 
 if __name__ == "__main__":
+    prompt = None
+
     if len(sys.argv) > 1:
-        prompt = sys.argv[1]
+        arg = sys.argv[1]
+        # @ 로 시작하면 파일에서 읽기
+        if arg.startswith('@'):
+            file_path = arg[1:]
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    prompt = f.read()
+                print(f"[INFO] 파일에서 프롬프트 읽기: {file_path}")
+            except Exception as e:
+                print(json.dumps({"success": False, "error": f"파일 읽기 실패: {e}"}))
+                sys.exit(1)
+        else:
+            prompt = arg
     else:
         try:
             data = json.loads(sys.stdin.read())
