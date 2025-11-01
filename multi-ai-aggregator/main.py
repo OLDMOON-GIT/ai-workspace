@@ -9,6 +9,18 @@ import argparse
 
 # Fix Windows console encoding
 if sys.platform == 'win32':
+    import io
+    # Only wrap if not already wrapped
+    if not isinstance(sys.stdout, io.TextIOWrapper) or sys.stdout.encoding != 'utf-8':
+        try:
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        except:
+            pass
+    if not isinstance(sys.stderr, io.TextIOWrapper) or sys.stderr.encoding != 'utf-8':
+        try:
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+        except:
+            pass
     os.system('chcp 65001 > nul')
 
 # Initialize colorama
@@ -44,9 +56,8 @@ async def main(question: str, headless: bool = False, agents_to_use: list = None
         import os
         import pathlib
 
-        # Use automation profile (same as setup_login.py)
-        # 프로젝트별로 다른 프로필 사용하여 충돌 방지
-        automation_profile = os.path.join(os.getcwd(), '.chrome-automation-profile-aggregator')
+        # Use automation profile (same as refine_and_send.py and setup_login.py)
+        automation_profile = os.path.join(os.getcwd(), '.chrome-automation-profile')
         pathlib.Path(automation_profile).mkdir(exist_ok=True)
 
         print(f"{Fore.YELLOW}[INFO] Using automation profile: {automation_profile}{Style.RESET_ALL}")
