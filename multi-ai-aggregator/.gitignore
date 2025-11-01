@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Chrome profiles (contains login sessions)
+.chrome-automation-profile/
+.chrome-automation-profile-*/
+
+# Queue system
+.queue/
+
+# Environment variables (contains sensitive data)
+.env
+
+# Output files
+final_results_*.txt
+ai_responses_*.txt
+*.log
+
+# Cache
+cache.sqlite
+*.db
+
+# OS
+.DS_Store
+Thumbs.db

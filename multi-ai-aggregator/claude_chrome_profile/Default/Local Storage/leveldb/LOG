@@ -1,0 +1,9 @@
+2025/11/01-13:10:34.079 1fb8 Reusing MANIFEST C:\Users\oldmoon\workspace\multi-ai-aggregator\claude_chrome_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2025/11/01-13:10:34.089 1fb8 Recovering log #7
+2025/11/01-13:10:34.090 1fb8 Level-0 table #9: started
+2025/11/01-13:10:34.112 1fb8 Level-0 table #9: 30656 bytes OK
+2025/11/01-13:10:34.114 1fb8 Recovering log #8
+2025/11/01-13:10:34.127 1fb8 Reusing old log C:\Users\oldmoon\workspace\multi-ai-aggregator\claude_chrome_profile\Default\Local Storage\leveldb/000008.log 
+2025/11/01-13:10:34.138 1fb8 Delete type=0 #7
+2025/11/01-13:11:04.288 1fb8 Level-0 table #11: started
+2025/11/01-13:11:04.295 1fb8 Level-0 table #11: 30718 bytes OK

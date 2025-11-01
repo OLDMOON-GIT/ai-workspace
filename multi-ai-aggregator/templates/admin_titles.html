@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대본 생성 - Multi AI Aggregator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            font-size: 1.1em;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            transition: background 0.3s;
+        }
+
+        .back-link:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn-generate {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-generate:active {
+            transform: translateY(0);
+        }
+
+        .btn-generate:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .scripts-list {
+            margin-top: 40px;
+            padding-top: 40px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .scripts-list h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .script-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .script-item:hover {
+            background: #e9ecef;
+        }
+
+        .script-info {
+            flex: 1;
+        }
+
+        .script-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .script-date {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status-badge.ing {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status-badge.done {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-badge.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-badge.pending {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn-view {
+            padding: 8px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .btn-view:hover {
+            background: #5568d3;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .modal-close:hover {
+            background: #c82333;
+        }
+
+        .modal-body {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #333;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <a href="/admin" class="back-link" style="position: absolute; top: 20px; left: 20px;">← 관리자 페이지</a>
+
+    <div class="container">
+        <h1>📝 대본 제목 등록</h1>
+        <p class="subtitle">제목을 입력하면 Claude가 자동으로 대본을 생성합니다</p>
+
+        <form id="generateForm">
+            <div class="form-group">
+                <label for="title">영상 제목</label>
+                <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    placeholder="예: 파이썬으로 웹 크롤링하는 방법"
+                    required
+                >
+            </div>
+
+            <button type="submit" class="btn-generate" id="generateBtn">
+                대본 생성하기
+            </button>
+        </form>
+
+        <div id="status" class="status"></div>
+
+        <div class="scripts-list">
+            <h2>생성된 대본 목록</h2>
+            <div id="scriptsList"></div>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">닫기</button>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('generateForm');
+        const titleInput = document.getElementById('title');
+        const generateBtn = document.getElementById('generateBtn');
+        const status = document.getElementById('status');
+        const scriptsList = document.getElementById('scriptsList');
+        const modal = document.getElementById('modal');
+        const modalBody = document.getElementById('modalBody');
+
+        let currentTaskId = null;
+        let pollInterval = null;
+        let activeTasks = new Set();
+
+        // 페이지 로드 시 대본 목록 불러오기 및 주기적 업데이트
+        loadScripts();
+        setInterval(loadScripts, 3000); // 3초마다 목록 새로고침
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const title = titleInput.value.trim();
+            if (!title) {
+                showStatus('제목을 입력해주세요', 'error');
+                return;
+            }
+
+            // 버튼 비활성화 및 로딩 표시
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="loader"></span>대본 생성 중...';
+            showStatus('Claude가 대본을 생성하고 있습니다. 잠시만 기다려주세요...', 'loading');
+
+            try {
+                const response = await fetch('/api/generate-script', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    currentTaskId = data.task_id;
+                    activeTasks.add(currentTaskId);
+                    showStatus('작업이 시작되었습니다. 진행 상황을 모니터링합니다...', 'loading');
+                    titleInput.value = '';
+
+                    // 작업 상태 폴링 시작
+                    startPolling(currentTaskId);
+                } else {
+                    showStatus(`오류: ${data.message || data.error || '알 수 없는 오류'}`, 'error');
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = '대본 생성하기';
+                }
+            } catch (error) {
+                showStatus(`오류: ${error.message}`, 'error');
+                generateBtn.disabled = false;
+                generateBtn.textContent = '대본 생성하기';
+            }
+        });
+
+        function startPolling(taskId) {
+            // 기존 폴링 중지
+            if (pollInterval) {
+                clearInterval(pollInterval);
+            }
+
+            // 2초마다 작업 상태 확인
+            pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/task/${taskId}`);
+                    const taskData = await response.json();
+
+                    if (taskData.status === 'DONE') {
+                        showStatus('대본 생성 완료! 🎉', 'success');
+                        clearInterval(pollInterval);
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = '대본 생성하기';
+                        activeTasks.delete(taskId);
+                        loadScripts(); // 목록 새로고침
+                    } else if (taskData.status === 'ERROR') {
+                        showStatus(`오류: ${taskData.message}`, 'error');
+                        clearInterval(pollInterval);
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = '대본 생성하기';
+                        activeTasks.delete(taskId);
+                    } else if (taskData.status === 'ING') {
+                        showStatus(`진행 중: ${taskData.message}`, 'loading');
+                    }
+                } catch (error) {
+                    console.error('Failed to poll task status:', error);
+                }
+            }, 2000);
+        }
+
+        async function loadScripts() {
+            try {
+                // 스크립트 목록 가져오기
+                const scriptsResponse = await fetch('/api/scripts');
+                const scriptsData = await scriptsResponse.json();
+
+                // 활성 작업 가져오기
+                const tasksPromises = Array.from(activeTasks).map(taskId =>
+                    fetch(`/api/task/${taskId}`).then(r => r.json()).catch(() => null)
+                );
+                const tasksData = await Promise.all(tasksPromises);
+
+                // 스크립트와 작업을 합쳐서 표시
+                const allItems = [];
+
+                // 완료된 스크립트 추가
+                if (scriptsData.scripts && scriptsData.scripts.length > 0) {
+                    scriptsData.scripts.forEach(script => {
+                        allItems.push({
+                            type: 'script',
+                            title: script.title,
+                            created: script.created,
+                            filename: script.filename,
+                            status: 'DONE'
+                        });
+                    });
+                }
+
+                // 진행 중인 작업 추가
+                tasksData.forEach(task => {
+                    if (task && task.status !== 'DONE') {
+                        allItems.push({
+                            type: 'task',
+                            title: task.title,
+                            created: task.created,
+                            status: task.status,
+                            message: task.message
+                        });
+                    }
+                });
+
+                if (allItems.length > 0) {
+                    scriptsList.innerHTML = allItems.map(item => {
+                        const statusClass = item.status.toLowerCase();
+                        const statusText = item.status === 'DONE' ? 'DONE' :
+                                         item.status === 'ING' ? 'ING' :
+                                         item.status === 'ERROR' ? 'ERROR' : 'PENDING';
+
+                        return `
+                            <div class="script-item">
+                                <div class="script-info">
+                                    <div class="script-title">
+                                        ${item.title}
+                                        <span class="status-badge ${statusClass}">${statusText}</span>
+                                    </div>
+                                    <div class="script-date">${item.created}</div>
+                                </div>
+                                ${item.type === 'script' ?
+                                    `<button class="btn-view" onclick="viewScript('${item.filename}')">보기</button>` :
+                                    `<span style="color: #666; font-size: 0.9em;">${item.message || '처리 중...'}</span>`
+                                }
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    scriptsList.innerHTML = '<p style="color: #666; text-align: center;">생성된 대본이 없습니다</p>';
+                }
+            } catch (error) {
+                console.error('Failed to load scripts:', error);
+            }
+        }
+
+        async function viewScript(filename) {
+            try {
+                const response = await fetch(`/api/scripts/${filename}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    modalBody.textContent = data.content;
+                    modal.classList.add('active');
+                } else {
+                    alert(`오류: ${data.error}`);
+                }
+            } catch (error) {
+                alert(`오류: ${error.message}`);
+            }
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+
+            if (type === 'success' || type === 'error') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // 모달 외부 클릭 시 닫기
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
