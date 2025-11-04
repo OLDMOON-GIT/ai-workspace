@@ -2,16 +2,26 @@
 
 이 문서는 workspace 내의 프로젝트에서 권장하는 구현 패턴과 모범 사례를 정리한 문서입니다.
 
+## 🌏 기본 규칙
+
+### AI와의 대화는 한글로 진행
+- 모든 개발 대화는 한글로 진행합니다
+- 코드 주석도 가능한 한글로 작성합니다
+- 에러 메시지와 로그도 한글을 우선적으로 사용합니다
+
 ## 📋 목차
 
 1. [파일 정렬 규칙](#1-파일-정렬-규칙) ⭐️ **중요**
 2. [자막 싱크 시스템](#2-자막-싱크-시스템) ⭐️ **중요**
 3. [비디오 병합 워크플로우](#3-비디오-병합-워크플로우) ⭐️ **중요**
 4. [Regression Test](#4-regression-test) ⭐️ **중요**
-5. [인증 구현](#5-인증-구현)
-6. [초기 로딩 최적화](#6-초기-로딩-최적화)
-7. [폴링 최소화](#7-폴링-최소화)
-8. [로그 관리](#8-로그-관리)
+5. [프론트엔드-백엔드 아키텍처](#5-프론트엔드-백엔드-아키텍처) ⭐️ **중요**
+6. [인증 구현](#6-인증-구현)
+7. [초기 로딩 최적화](#7-초기-로딩-최적화)
+8. [폴링 최소화](#8-폴링-최소화)
+9. [로그 관리](#9-로그-관리)
+10. [UI/UX 일관성 규칙](#10-uiux-일관성-규칙) ⭐️ **중요**
+11. [API 에러 처리 규칙](#11-api-에러-처리-규칙) ⭐️ **중요**
 
 ---
 
@@ -473,13 +483,359 @@ python -m pytest tests/test_regression.py::test_sora2_generation -v
 3. 변경된 기능이 있으면 테스트 업데이트
 4. 테스트 실행 결과를 Git에 커밋
 
+---
+
+## 5. Frontend Regression Tests
+
+### 5.1 개요
+
+프론트엔드의 핵심 비즈니스 로직을 검증하는 단위 테스트:
+- 파일 정렬 로직 (이미지/비디오 시퀀스 인식)
+- JSON 제목 추출 및 안전한 파일명 생성
+
+### 5.2 테스트 위치
+
+```
+trend-video-frontend/
+├── __tests__/
+│   ├── api/
+│   │   ├── file-sorting.test.ts          # 파일 정렬 알고리즘
+│   │   └── json-title-extraction.test.ts # 제목 파싱 및 검증
+│   ├── test_data/                         # 테스트 데이터 (필요시)
+│   └── README.md                          # 테스트 문서
+├── jest.config.js                         # Jest 설정
+└── jest.setup.js                          # Jest 초기화
+```
+
+### 5.3 테스트 실행
+
+```bash
+cd trend-video-frontend
+
+# 전체 테스트 실행
+npm test
+
+# 특정 테스트만 실행
+npm test file-sorting
+npm test json-title-extraction
+
+# 커버리지 리포트
+npm test -- --coverage
+
+# Watch 모드 (개발 중)
+npm test -- --watch
+```
+
+### 5.4 테스트 카테고리
+
+#### 파일 정렬 로직 (`file-sorting.test.ts`)
+
+**이미지 정렬** (from `generate-video-upload/route.ts`):
+- 시퀀스 번호 추출 패턴:
+  - 숫자로 시작: `1.jpg`, `02.png`
+  - 언더스코어: `image_01.jpg`
+  - 대시: `scene-02.png`
+  - 괄호: `Image_fx (47).jpg` (랜덤 ID 없을 때만)
+- 랜덤 ID 무시: `Whisk_2ea51d84...`
+- lastModified 폴백
+
+**비디오 정렬** (from `video-merge/route.ts`):
+- 3자리 시퀀스: `scene_001.mp4`
+- lastModified 폴백
+
+#### JSON 제목 추출 (`json-title-extraction.test.ts`)
+
+**제목 추출:**
+- JSON에서 `title` 필드 파싱
+- 마크다운 코드 블록 처리
+- 유효하지 않은 JSON 처리
+
+**안전한 파일명:**
+- Windows 금지 문자 제거: `< > : " / \ | ? *`
+- 공백 트림
+- 100자 제한
+- 유니코드 보존 (한글, 일본어, 스페인어 등)
+
+### 5.5 테스트 성공 기준
+
+**각 테스트는 다음을 확인:**
+1. ✅ 모든 정렬 테스트 통과 (33개 테스트)
+2. ✅ 엣지 케이스 올바르게 처리
+3. ✅ 정렬 동작에 리그레션 없음
+4. ✅ 제목 추출 및 검증 정확
+5. ✅ Windows 호환 파일명 생성
+
+### 5.6 Frontend Regression Test 업데이트 규칙
+
+**스테이블 버전마다:**
+1. `npm test` 실행하여 모든 테스트 통과 확인
+2. 파일 정렬 로직 변경 시 테스트 업데이트
+3. 제목 추출/검증 로직 변경 시 테스트 업데이트
+4. 새로운 시퀀스 번호 패턴 추가 시 테스트 추가
+5. 크리티컬 버그 수정 시 리그레션 방지 테스트 추가
+
+**업데이트하지 말아야 할 경우:**
+- UI/스타일 변경
+- 로직이 없는 코드 리팩토링
+- API 엔드포인트 URL 변경 (로직 변경 없을 때)
+
+### 5.7 테스트 데이터
+
+- 테스트 데이터는 테스트 파일 내에 mock 객체로 임베드됨
+- 단위 테스트이므로 외부 파일 불필요
+- 통합 테스트 추가 시 `__tests__/test_data/`에 작은 파일 배치
+
+### 5.8 커버리지 목표
+
+- **파일 정렬**: 100% 커버리지 (크리티컬 비즈니스 로직)
+- **제목 추출**: 100% 커버리지 (크리티컬 비즈니스 로직)
+- **전체**: 로직이 많은 코드 >90% 커버리지
+
+---
+
+## 6. Backend Regression Tests
+
 **테스트 실패 시:**
 - 코드를 수정하거나
 - 의도된 변경이면 테스트를 업데이트
 
 ---
 
-## 5. 인증 구현
+## 5. 프론트엔드-백엔드 아키텍처
+
+### 🎯 핵심 구조
+
+**프로젝트 구성:**
+```
+workspace/
+├── trend-video-frontend/  (Next.js - TypeScript)
+│   ├── src/app/api/       ← Next.js API Routes (프론트엔드 서버)
+│   └── src/app/           ← React 컴포넌트
+└── trend-video-backend/   (Python)
+    ├── src/
+    │   ├── video_generator/
+    │   ├── sora/
+    │   └── ai_aggregator/
+    └── video_merge.py
+```
+
+### 5.1 호출 구조
+
+**Frontend → Backend 호출 흐름:**
+
+```
+사용자 브라우저
+    ↓ (HTTP Request)
+Next.js API Route (trend-video-frontend/src/app/api/)
+    ↓ (spawn/exec)
+Python Script (trend-video-backend/src/)
+    ↓ (프로세스 실행)
+결과 파일 생성
+    ↓ (폴링으로 상태 확인)
+Next.js API Route → 사용자 브라우저
+```
+
+**예시:**
+
+1. **대본 생성 요청**
+   ```typescript
+   // Frontend: /api/scripts/generate/route.ts
+   const pythonScript = path.join(
+     process.cwd(),
+     '../trend-video-backend/run_ai_aggregator.py'
+   );
+
+   const process = spawn('python', [
+     pythonScript,
+     '--output', outputPath,
+     '--topic', topic
+   ]);
+   ```
+
+2. **비디오 병합 요청**
+   ```typescript
+   // Frontend: /api/video-merge/route.ts
+   const pythonScript = path.join(
+     process.cwd(),
+     '../trend-video-backend/video_merge.py'
+   );
+
+   const process = spawn('python', [
+     pythonScript,
+     '--mode', 'merge',
+     '--input', inputDir
+   ]);
+   ```
+
+### 5.2 프로세스 관리
+
+**PID 저장 및 추적:**
+
+```typescript
+// Frontend: 프로세스 시작 시 PID 저장
+const pythonProcess = spawn('python', [scriptPath, ...args]);
+
+db.prepare(`
+  UPDATE scripts_temp
+  SET pid = ?
+  WHERE id = ?
+`).run(pythonProcess.pid, taskId);
+```
+
+**프로세스 취소:**
+
+```typescript
+// Frontend: /api/scripts/cancel/route.ts
+// 1. DB에서 PID 조회
+const row = db.prepare('SELECT pid FROM scripts_temp WHERE id = ?').get(taskId);
+
+// 2. 프로세스 트리 전체 종료
+if (process.platform === 'win32') {
+  // Windows: taskkill로 프로세스 트리 종료
+  await execAsync(`taskkill /F /T /PID ${pid}`);
+
+  // 3. 좀비 프로세스 방지 - ShimGen, Python 정리
+  await execAsync('taskkill /F /IM ShimGen.exe 2>nul');
+  await execAsync('taskkill /F /FI "IMAGENAME eq python.exe" /FI "WINDOWTITLE eq *claude*" 2>nul');
+} else {
+  // Unix: kill 명령 사용
+  await execAsync(`kill -9 ${pid}`);
+}
+
+// 4. DB 상태 업데이트
+db.prepare(`
+  UPDATE scripts_temp
+  SET status = 'ERROR', message = '사용자에 의해 중지됨', pid = NULL
+  WHERE id = ?
+`).run(taskId);
+```
+
+### 5.3 좀비 프로세스 방지
+
+**문제:**
+- Python 스크립트가 중지되어도 ShimGen.exe나 자식 프로세스가 살아있는 경우
+- `taskkill /F /T /PID`만으로는 모든 프로세스를 정리하지 못함
+
+**해결:**
+```typescript
+// 1. 메인 PID 종료
+await execAsync(`taskkill /F /T /PID ${pid}`);
+
+// 2. 이미지 이름으로 남은 프로세스 정리
+try {
+  await execAsync('taskkill /F /IM ShimGen.exe 2>nul');
+} catch {
+  // ShimGen이 없으면 무시
+}
+
+try {
+  await execAsync('taskkill /F /FI "IMAGENAME eq python.exe" /FI "WINDOWTITLE eq *claude*" 2>nul');
+} catch {
+  // 해당 프로세스가 없으면 무시
+}
+```
+
+**중요 플래그:**
+- `/F`: 강제 종료 (Force)
+- `/T`: 프로세스 트리 전체 종료 (Tree)
+- `/IM`: 이미지 이름으로 종료 (Image Name)
+- `/FI`: 필터 조건 (Filter)
+- `2>nul`: 에러 메시지 억제 (프로세스가 없을 때)
+
+### 5.4 데이터 전달
+
+**Frontend → Backend:**
+
+1. **파일 시스템 경로**
+   ```typescript
+   // Frontend가 파일을 저장하고 경로를 Python에 전달
+   const inputDir = path.join(process.cwd(), 'output', jobId, 'videos');
+   const configPath = path.join(inputDir, 'config.json');
+
+   spawn('python', [
+     scriptPath,
+     '--input', inputDir,
+     '--config', configPath
+   ]);
+   ```
+
+2. **설정 JSON 파일**
+   ```typescript
+   // config.json 생성
+   const config = {
+     mode: 'longform',
+     add_subtitles: true,
+     transitions: true,
+     narration_text: 'Hello...'
+   };
+
+   await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+   ```
+
+**Backend → Frontend:**
+
+1. **파일 생성**
+   ```python
+   # Python이 결과 파일 생성
+   output_path = output_dir / 'final_video.mp4'
+   # ... 비디오 처리 ...
+   ```
+
+2. **상태 파일 업데이트**
+   ```python
+   # status.json 업데이트
+   status = {
+       'status': 'completed',
+       'output_file': str(output_path),
+       'duration': video_duration
+   }
+   with open(output_dir / 'status.json', 'w') as f:
+       json.dump(status, f)
+   ```
+
+3. **Frontend 폴링**
+   ```typescript
+   // Frontend가 status.json 폴링
+   const interval = setInterval(async () => {
+     const statusPath = path.join(outputDir, 'status.json');
+     if (await fs.pathExists(statusPath)) {
+       const status = await fs.readJSON(statusPath);
+       if (status.status === 'completed') {
+         clearInterval(interval);
+         // 완료 처리
+       }
+     }
+   }, 2000);
+   ```
+
+### 5.5 에러 처리
+
+**Python 스크립트 에러:**
+
+```typescript
+// Frontend: 프로세스 에러 캡처
+pythonProcess.stderr.on('data', (data) => {
+  const errorMsg = data.toString();
+  console.error('Python 에러:', errorMsg);
+
+  // DB에 에러 저장
+  db.prepare(`
+    UPDATE scripts_temp
+    SET status = 'ERROR', message = ?
+    WHERE id = ?
+  `).run(errorMsg, taskId);
+});
+
+pythonProcess.on('exit', (code) => {
+  if (code !== 0) {
+    console.error(`프로세스 종료 (코드: ${code})`);
+  }
+});
+```
+
+---
+
+## 6. 인증 구현
 
 ### ✅ 권장: 쿠키 기반 인증
 
@@ -822,12 +1178,70 @@ useEffect(() => {
 
 ## 4. 로그 관리
 
-### ✅ 권장: 필요한 로그만 남기기
+### 🎯 핵심 원칙
+
+**디버깅 로그는 개발 완료 후 반드시 제거하거나 주석 처리**
+
+### 4.1 로그 사용 규칙
 
 **원칙:**
-- 개발 중: 디버깅에 필요한 로그
+- 개발 중: 디버깅에 필요한 로그 사용 가능
+- **개발 완료 후: 디버깅 로그는 반드시 제거 또는 주석 처리** ⭐️
 - 프로덕션: 에러와 중요 이벤트만
 - 폴링 로그는 주석 처리
+- 데이터 조회 성공 로그는 제거
+
+**로그 레벨:**
+- ✅ **에러 발생** (항상 유지)
+- ✅ **중요한 상태 변경** (세션 만료, 크레딧 차감, 결제 완료 등)
+- ✅ **인증 이벤트** (로그인 성공/실패, 로그아웃)
+- ❌ **일반적인 데이터 조회** (목록 가져오기, 상태 확인)
+- ❌ **API 요청 시작/완료** (응답 상태, 데이터 내용)
+- ❌ **세션 검증** (폴링 시 스팸)
+- ❌ **useEffect 실행 로그**
+- ❌ **렌더링 확인 로그**
+
+### 4.2 개발 중 디버깅 로그
+
+**나쁜 예시 (제거해야 함):**
+```typescript
+// ❌ 이런 로그는 개발 완료 후 제거!
+export default function MyContentPage() {
+  useEffect(() => {
+    const loadScripts = async () => {
+      console.log('📥 대본 목록 가져오기 시작...'); // ❌ 제거
+      const res = await fetch('/api/scripts');
+      console.log('응답 상태:', res.status, res.statusText); // ❌ 제거
+      const data = await res.json();
+      console.log('응답 데이터:', data); // ❌ 제거
+      setScripts(data.scripts);
+      console.log('✅ 대본 설정:', data.scripts.length, '개'); // ❌ 제거
+    };
+    loadScripts();
+  }, []);
+}
+```
+
+**좋은 예시 (에러만 로그):**
+```typescript
+// ✅ 에러만 로그
+export default function MyContentPage() {
+  useEffect(() => {
+    const loadScripts = async () => {
+      try {
+        const res = await fetch('/api/scripts');
+        const data = await res.json();
+        setScripts(data.scripts);
+      } catch (error) {
+        console.error('대본 목록 로드 실패:', error); // ✅ 에러는 로그
+      }
+    };
+    loadScripts();
+  }, []);
+}
+```
+
+### 4.3 세션 검증 로그
 
 **구현 방법:**
 
@@ -848,7 +1262,7 @@ export async function getSession(sessionId: string) {
   }
 
   if (Date.now() > session.expiresAt) {
-    console.log('⏰ 세션 만료됨'); // 중요 이벤트는 로그
+    console.log('⏰ 세션 만료됨'); // ✅ 중요 이벤트는 로그
     sessions.delete(sessionId);
     await writeSessions(sessions);
     return null;
@@ -859,13 +1273,15 @@ export async function getSession(sessionId: string) {
 }
 ```
 
-**로그 레벨:**
-- ✅ 로그인/로그아웃 성공
-- ✅ 에러 발생
-- ✅ 중요한 상태 변경 (세션 만료, 크레딧 차감)
-- ❌ 모든 API 요청
-- ❌ 세션 검증 (폴링 시 스팸)
-- ❌ 일반적인 데이터 조회
+### 4.4 체크리스트
+
+코드 푸시 전 확인사항:
+- [ ] 디버깅용 `console.log` 제거 또는 주석 처리
+- [ ] 데이터 조회 성공 로그 제거
+- [ ] API 요청/응답 로그 제거
+- [ ] useEffect 실행 확인 로그 제거
+- [ ] 에러 로그만 남김 (`console.error`)
+- [ ] 중요 이벤트 로그만 남김
 
 ---
 
@@ -1013,4 +1429,398 @@ trend-video-frontend를 푸시하시겠습니까?"
 
 ---
 
-*Last Updated: 2025-01-01*
+## 10. UI/UX 일관성 규칙
+
+### 🎯 핵심 원칙
+
+**같은 데이터를 표시하는 모든 탭/섹션은 동일한 UX를 유지해야 함**
+
+### 10.1 탭 구조 일관성
+
+**위치:** `trend-video-frontend/src/app/my-content/page.tsx`
+
+**규칙:**
+- ✅ 전체 탭과 개별 탭(영상, 대본)은 같은 레이아웃 사용
+- ✅ 카드 스타일, 버튼 위치, 썸네일 크기 동일
+- ✅ 호버 효과, 트랜지션 일관성 유지
+
+**레이아웃 패턴:**
+```typescript
+// 수평 리스트 레이아웃 (영상/대본 공통)
+<div className="flex flex-col md:flex-row gap-4 p-4">
+  {/* 왼쪽: 썸네일 또는 아이콘 */}
+  <div className="relative w-full md:w-64 h-36 flex-shrink-0 bg-slate-800/50 rounded-lg overflow-hidden">
+    {/* 영상: 썸네일 이미지 */}
+    {/* 대본: 📝 아이콘 */}
+  </div>
+
+  {/* 중앙: 메타데이터 */}
+  <div className="flex-1 min-w-0 flex flex-col justify-between">
+    <div>
+      <h3 className="text-lg font-semibold text-white mb-2 break-words line-clamp-2">
+        {title}
+      </h3>
+      {/* 날짜, 상태 등 */}
+    </div>
+
+    {/* 하단: 버튼 */}
+    <div className="flex flex-wrap gap-2 mt-4">
+      {/* 액션 버튼들 */}
+    </div>
+  </div>
+</div>
+```
+
+### 10.2 썸네일 표시 규칙
+
+**영상 카드:**
+- ✅ 썸네일 크기: `w-full md:w-64 h-36`
+- ✅ 이미지 핏: `object-cover` (공간에 꽉 차게)
+- ✅ 다운로드 메타포: 호버 시 다운로드 아이콘 오버레이
+- ✅ 상태 표시: 진행중/완료/에러 오버레이
+
+**대본 카드:**
+- ✅ 썸네일 없음 → 대신 📝 이모지 아이콘 사용
+- ✅ 크기는 영상과 동일: `w-full md:w-64 h-36`
+- ✅ 배경: `bg-slate-800/50`
+- ✅ 타입/상태 배지 표시
+
+### 10.3 버튼 일관성
+
+**전체 탭과 개별 탭의 버튼 동일:**
+
+영상 완료 상태 버튼 (전체 탭 = 영상 탭):
+```typescript
+// ✅ 동일한 버튼 구성
+<>
+  <a href={downloadUrl} className="...">다운로드</a>
+  <YouTubeUploadButton {...props} />
+  <button onClick={handleOpenFolder}>📁 폴더</button>
+  <button onClick={handleRestart}>🔄 재시도</button>
+  <button onClick={handleDelete}>🗑️</button>
+</>
+```
+
+대본 완료 상태 버튼 (전체 탭 = 대본 탭):
+```typescript
+// ✅ 동일한 버튼 구성
+<>
+  <button onClick={toggleContent}>📖 대본</button>
+  <button onClick={handleMakeVideo}>🎬 영상</button>
+  <button onClick={handleCopy}>📋 복사</button>
+  <button onClick={handleDownload}>📥 저장</button>
+  <button onClick={handleConvert}>🔀 변환</button>
+  <button onClick={handleRestart}>🔄 재시도</button>
+  <button onClick={handleDelete}>🗑️</button>
+</>
+```
+
+### 10.4 모달 z-index 규칙
+
+**모든 모달은 최상위 레이어에 표시:**
+```typescript
+// YouTube 업로드 모달
+<div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[99999] p-4 pt-16 overflow-y-auto">
+```
+
+**z-index 레벨:**
+- `z-50`: 일반 드롭다운, 툴팁
+- `z-[9999]`: 중요한 오버레이
+- `z-[99999]`: 최상위 모달 (다른 모든 요소 위)
+
+### 10.5 체크리스트
+
+UI 수정 시 확인사항:
+
+- [ ] 전체 탭과 개별 탭의 레이아웃 동일한가?
+- [ ] 버튼 구성이 모든 탭에서 일관되는가?
+- [ ] 썸네일 크기와 핏이 통일되었는가?
+- [ ] 대본은 썸네일 없이 아이콘으로 표시되는가?
+- [ ] 호버 효과가 모든 카드에 동일하게 적용되는가?
+- [ ] 모달이 다른 요소에 가려지지 않는가?
+- [ ] 반응형 레이아웃이 올바르게 작동하는가?
+
+### 10.6 안티패턴
+
+**❌ 하지 말아야 할 것:**
+
+1. **탭마다 다른 레이아웃**
+   ```typescript
+   // ❌ 전체 탭: 수평 레이아웃
+   // ❌ 영상 탭: 수직 레이아웃
+   // → 모든 탭 동일해야 함
+   ```
+
+2. **버튼 위치 불일치**
+   ```typescript
+   // ❌ 전체 탭: 버튼이 오른쪽
+   // ❌ 영상 탭: 버튼이 하단
+   // → 모든 탭에서 하단 통일
+   ```
+
+3. **썸네일 크기 불일치**
+   ```typescript
+   // ❌ aspect-video (16:9 강제)
+   // ✅ h-36 (고정 높이, object-cover)
+   ```
+
+4. **기능 누락**
+   ```typescript
+   // ❌ 영상 탭에만 YouTube 버튼 있음
+   // ✅ 전체 탭에도 YouTube 버튼 있어야 함
+   ```
+
+---
+
+## 11. API 에러 처리 규칙
+
+### 🎯 핵심 원칙
+
+**HTTP 404는 엔드포인트가 존재하지 않을 때만 사용. 데이터가 없는 경우는 커스텀 에러 코드와 함께 400 또는 500 반환**
+
+### 11.1 HTTP 상태 코드 사용 규칙
+
+**문제점:**
+- API 엔드포인트가 없을 때: `404 Not Found`
+- 데이터를 찾을 수 없을 때도: `404 Not Found`
+- → 두 경우를 구분할 수 없어 디버깅이 어려움
+
+**해결 방법:**
+
+#### ✅ 올바른 사용
+
+```typescript
+// API 라우트: /api/convert-format/route.ts
+
+export async function POST(request: NextRequest) {
+  try {
+    // 1. 인증 실패 → 401 Unauthorized
+    const user = await getCurrentUser(request);
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: '로그인이 필요합니다.',
+          errorCode: 'AUTH_REQUIRED'
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. 잘못된 요청 파라미터 → 400 Bad Request
+    const { scriptId, targetFormat } = await request.json();
+    if (!scriptId || !targetFormat) {
+      return NextResponse.json(
+        {
+          error: 'scriptId와 targetFormat이 필요합니다.',
+          errorCode: 'INVALID_PARAMETERS'
+        },
+        { status: 400 }
+      );
+    }
+
+    // 3. 데이터를 찾을 수 없음 → 400 Bad Request + 커스텀 에러 코드
+    const originalScript = await findScriptById(scriptId);
+    if (!originalScript) {
+      return NextResponse.json(
+        {
+          error: '대본을 찾을 수 없습니다. 대본 생성이 완료되지 않았을 수 있습니다.',
+          errorCode: 'SCRIPT_NOT_FOUND',  // 커스텀 에러 코드
+          scriptId: scriptId
+        },
+        { status: 400 }  // 404가 아닌 400
+      );
+    }
+
+    // 4. 권한 없음 → 403 Forbidden
+    if (originalScript.userId !== user.userId) {
+      return NextResponse.json(
+        {
+          error: '이 대본에 접근할 권한이 없습니다.',
+          errorCode: 'FORBIDDEN'
+        },
+        { status: 403 }
+      );
+    }
+
+    // 5. 지원하지 않는 변환 → 400 Bad Request
+    const validConversions = ['longform-to-shortform', 'longform-to-sora2'];
+    if (!validConversions.includes(`${sourceType}-to-${targetFormat}`)) {
+      return NextResponse.json(
+        {
+          error: `지원하지 않는 변환: ${sourceType} → ${targetFormat}`,
+          errorCode: 'UNSUPPORTED_CONVERSION'
+        },
+        { status: 400 }
+      );
+    }
+
+    // 성공
+    return NextResponse.json({ success: true, data: result });
+
+  } catch (error: any) {
+    // 6. 서버 내부 에러 → 500 Internal Server Error
+    console.error('❌ API 에러:', error);
+    return NextResponse.json(
+      {
+        error: error?.message || '서버 에러가 발생했습니다.',
+        errorCode: 'INTERNAL_SERVER_ERROR',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
+      { status: 500 }
+    );
+  }
+}
+```
+
+#### ❌ 잘못된 사용
+
+```typescript
+// ❌ 나쁜 예: 데이터 없음에 404 사용
+if (!originalScript) {
+  return NextResponse.json(
+    { error: '대본을 찾을 수 없습니다.' },
+    { status: 404 }  // ❌ 엔드포인트가 없는 것처럼 보임
+  );
+}
+
+// ❌ 나쁜 예: 에러 코드 없음
+return NextResponse.json(
+  { error: '대본을 찾을 수 없습니다.' },
+  { status: 400 }  // ✅ 상태 코드는 맞지만 errorCode가 없어서 구체적인 원인 파악 어려움
+);
+```
+
+### 11.2 커스텀 에러 코드 규칙
+
+**네이밍 컨벤션:**
+- `SNAKE_CASE` 사용
+- 명확하고 구체적으로 작성
+- 프론트엔드에서 조건 분기 가능하도록
+
+**예시:**
+
+```typescript
+// 인증/권한
+'AUTH_REQUIRED'           // 로그인 필요
+'AUTH_INVALID_TOKEN'      // 잘못된 토큰
+'FORBIDDEN'               // 권한 없음
+
+// 데이터
+'SCRIPT_NOT_FOUND'        // 대본을 찾을 수 없음
+'VIDEO_NOT_FOUND'         // 비디오를 찾을 수 없음
+'USER_NOT_FOUND'          // 사용자를 찾을 수 없음
+
+// 검증
+'INVALID_PARAMETERS'      // 파라미터 누락/잘못됨
+'INVALID_FORMAT'          // 잘못된 형식
+'UNSUPPORTED_CONVERSION'  // 지원하지 않는 변환
+
+// 비즈니스 로직
+'INSUFFICIENT_CREDITS'    // 크레딧 부족
+'DUPLICATE_EMAIL'         // 중복 이메일
+'CONVERSION_FAILED'       // 변환 실패
+
+// 서버
+'INTERNAL_SERVER_ERROR'   // 서버 내부 에러
+'DATABASE_ERROR'          // 데이터베이스 에러
+```
+
+### 11.3 HTTP 상태 코드 요약
+
+| 상태 코드 | 사용 상황 | 예시 |
+|----------|----------|------|
+| **200** | 성공 | 데이터 조회/생성/수정 성공 |
+| **400** | 잘못된 요청 | 파라미터 누락, 잘못된 형식, **데이터를 찾을 수 없음** |
+| **401** | 인증 실패 | 로그인 필요, 잘못된 토큰 |
+| **403** | 권한 없음 | 본인 데이터가 아님 |
+| **404** | **엔드포인트 없음** | `/api/wrong-path` 호출 (Next.js가 자동 처리) |
+| **500** | 서버 에러 | try-catch의 catch 블록, DB 에러 |
+
+### 11.4 프론트엔드 에러 처리
+
+**에러 코드를 활용한 조건 분기:**
+
+```typescript
+// Frontend: page.tsx
+const handleConversion = async () => {
+  try {
+    const response = await fetch('/api/convert-format', {
+      method: 'POST',
+      body: JSON.stringify({ scriptId, targetFormat })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      // 에러 코드에 따라 다른 처리
+      switch (data.errorCode) {
+        case 'SCRIPT_NOT_FOUND':
+          toast.error('대본을 찾을 수 없습니다. 대본 생성이 완료될 때까지 기다려주세요.');
+          break;
+        case 'INSUFFICIENT_CREDITS':
+          toast.error('크레딧이 부족합니다. 충전 후 다시 시도해주세요.');
+          router.push('/settings/credits');
+          break;
+        case 'AUTH_REQUIRED':
+          toast.error('로그인이 필요합니다.');
+          router.push('/auth');
+          break;
+        case 'FORBIDDEN':
+          toast.error('권한이 없습니다.');
+          break;
+        default:
+          toast.error(data.error || '오류가 발생했습니다.');
+      }
+      return;
+    }
+
+    // 성공 처리
+    toast.success('대본 변환이 시작되었습니다.');
+  } catch (error) {
+    console.error('변환 요청 실패:', error);
+    toast.error('네트워크 오류가 발생했습니다.');
+  }
+};
+```
+
+### 11.5 실전 예제: convert-format API
+
+**Before (❌ 잘못된 예):**
+```typescript
+if (!originalScript) {
+  return NextResponse.json(
+    { error: '대본을 찾을 수 없습니다.' },
+    { status: 404 }  // ❌ API 엔드포인트가 없는 것처럼 보임
+  );
+}
+```
+
+**After (✅ 올바른 예):**
+```typescript
+if (!originalScript) {
+  return NextResponse.json(
+    {
+      error: '대본을 찾을 수 없습니다. 대본 생성이 완료되지 않았을 수 있습니다.',
+      errorCode: 'SCRIPT_NOT_FOUND',
+      scriptId: scriptId,
+      suggestion: 'scripts_temp 테이블 확인 필요'
+    },
+    { status: 400 }  // ✅ Bad Request
+  );
+}
+```
+
+### 11.6 체크리스트
+
+API 작성 시 확인사항:
+
+- [ ] 404는 엔드포인트가 없을 때만 사용 (Next.js가 자동 처리)
+- [ ] 데이터를 찾을 수 없는 경우: 400 + errorCode
+- [ ] 모든 에러 응답에 errorCode 포함
+- [ ] 에러 메시지는 한글로 작성 (사용자 친화적)
+- [ ] 개발 환경에서는 상세 에러 정보(stack trace) 포함
+- [ ] 프론트엔드에서 errorCode로 분기 처리 가능
+
+---
+
+*Last Updated: 2025-01-20*
