@@ -1917,35 +1917,191 @@ trend-video-frontend를 푸시하시겠습니까?"
 - ✅ 배경: `bg-slate-800/50`
 - ✅ 타입/상태 배지 표시
 
-### 10.3 버튼 일관성
+### 10.3 버튼 구조 규칙 ⭐️ **중요**
 
-**전체 탭과 개별 탭의 버튼 동일:**
+> ⚠️ **2025-01-20 업데이트: 탭별 버튼 구조 표준화**
+>
+> **이 규칙을 절대 위반하지 마세요!** 버튼 구조가 계속 망가지는 것을 방지하기 위해 regression test와 함께 관리됩니다.
 
-영상 완료 상태 버튼 (전체 탭 = 영상 탭):
+**위치:** `trend-video-frontend/src/app/my-content/page.tsx`
+**테스트:** `trend-video-frontend/src/__tests__/myContentButtons.test.ts` (28 tests)
+
+#### 🎯 핵심 원칙
+
+1. **전체 탭 = 개별 탭**: 전체 탭의 영상 카드는 영상 탭과 동일, 전체 탭의 대본 카드는 대본 탭과 동일
+2. **대본 탭이 기준**: 대본 탭이 가장 많은 버튼(12개)을 가지며 표준
+3. **순서 엄수**: 버튼 순서는 액션 → 관리 → 위험 버튼 순
+4. **삭제는 항상 마지막**: 모든 탭에서 삭제 버튼은 마지막 위치
+
+#### 📊 탭별 버튼 개수
+
+- **영상 카드** (전체 탭 = 영상 탭): **9개 버튼**
+- **대본 카드** (전체 탭 = 대본 탭): **12개 버튼** ← 가장 많음 (기준)
+
+#### 🎬 영상 카드 버튼 구조 (9개)
+
+**순서:** 업로드 → 액션 → 관리 → 위험
+
 ```typescript
-// ✅ 동일한 버튼 구성
+// ✅ 전체 탭 영상 = 영상 탭 (완벽히 동일해야 함)
 <>
-  <a href={downloadUrl} className="...">다운로드</a>
+  {/* 1. YouTube 업로드 (첫 번째) */}
   <YouTubeUploadButton {...props} />
-  <button onClick={handleOpenFolder}>📁 폴더</button>
+
+  {/* 2. 읽어보기 (sourceContentId 있을 때만) */}
+  {item.data.sourceContentId && (
+    <button onClick={handleOpenSource}>📖 읽어보기</button>
+  )}
+
+  {/* 3. 폴더 (admin 권한만) */}
+  {isAdmin && (
+    <button onClick={handleOpenFolder}>📁 폴더</button>
+  )}
+
+  {/* 4. 로그 */}
+  <button onClick={handleOpenLog}>📋 로그</button>
+
+  {/* 5. 이미지크롤링 */}
+  <button onClick={handleImageCrawling}>🎨 이미지크롤링</button>
+
+  {/* 6. 저장 (이미지크롤링 다음에 위치) */}
+  <button onClick={handleDownload}>📥 저장</button>
+
+  {/* 7. 쇼츠 (longform 타입만) */}
+  {item.data.type === 'longform' && (
+    <button onClick={handleConvertToShorts}>⚡ 쇼츠</button>
+  )}
+
+  {/* 8. 재시도 */}
   <button onClick={handleRestart}>🔄 재시도</button>
-  <button onClick={handleDelete}>🗑️</button>
+
+  {/* 9. 삭제 (항상 마지막) */}
+  <button onClick={handleDelete}>🗑️ 삭제</button>
 </>
 ```
 
-대본 완료 상태 버튼 (전체 탭 = 대본 탭):
+#### 📝 대본 카드 버튼 구조 (12개)
+
+**순서:** 액션 → 관리 → 위험
+
 ```typescript
-// ✅ 동일한 버튼 구성
+// ✅ 전체 탭 대본 = 대본 탭 (완벽히 동일해야 함)
 <>
+  {/* 1. 대본 (첫 번째) */}
   <button onClick={toggleContent}>📖 대본</button>
+
+  {/* 2. 읽어보기 (두 번째) */}
+  <button onClick={handleOpenSource}>📖 읽어보기</button>
+
+  {/* 3. 이미지크롤링 (세 번째) */}
+  <button onClick={handleImageCrawling}>🎨 이미지크롤링</button>
+
+  {/* 4. 영상 (네 번째) */}
   <button onClick={handleMakeVideo}>🎬 영상</button>
+
+  {/* 5. 포멧팅 */}
+  <button onClick={handleFormatting}>✨ 포멧팅</button>
+
+  {/* 6. 복사 */}
   <button onClick={handleCopy}>📋 복사</button>
+
+  {/* 7. 로그 */}
+  <button onClick={handleOpenLog}>📋 로그</button>
+
+  {/* 8. 저장 */}
   <button onClick={handleDownload}>📥 저장</button>
-  <button onClick={handleConvert}>🔀 변환</button>
+
+  {/* 9. 변환 (longform/shortform 타입만) */}
+  {(item.data.type === 'longform' || item.data.type === 'shortform') && (
+    <button onClick={handleConvert}>🔀 변환</button>
+  )}
+
+  {/* 10. 상품정보 (product 타입만) */}
+  {item.data.type === 'product' && (
+    <button onClick={handleProductInfo}>🛍️ 상품정보</button>
+  )}
+
+  {/* 11. 재시도 */}
   <button onClick={handleRestart}>🔄 재시도</button>
-  <button onClick={handleDelete}>🗑️</button>
+
+  {/* 12. 삭제 (항상 마지막) */}
+  <button onClick={handleDelete}>🗑️ 삭제</button>
 </>
 ```
+
+#### 🔍 조건부 버튼 규칙
+
+| 버튼 | 표시 조건 | 카드 타입 |
+|------|----------|-----------|
+| 읽어보기 (영상) | `sourceContentId` 존재 시 | 영상 |
+| 폴더 | `isAdmin === true` | 영상 |
+| 쇼츠 | `type === 'longform'` | 영상 |
+| 변환 | `type === 'longform' \|\| type === 'shortform'` | 대본 |
+| 상품정보 | `type === 'product'` | 대본 |
+
+#### ✅ 필수 검증 체크리스트
+
+버튼 수정 시 반드시 확인:
+
+- [ ] **전체 탭 영상 = 영상 탭** 버튼 구성 동일한가?
+- [ ] **전체 탭 대본 = 대본 탭** 버튼 구성 동일한가?
+- [ ] 영상 카드는 **정확히 9개** 버튼인가? (조건부 제외)
+- [ ] 대본 카드는 **정확히 12개** 버튼인가? (조건부 제외)
+- [ ] YouTube 업로드가 영상 카드 **첫 번째**인가?
+- [ ] 대본 버튼이 대본 카드 **첫 번째**인가?
+- [ ] 삭제 버튼이 **모든 카드에서 마지막**인가?
+- [ ] 이미지크롤링 버튼이 **모든 카드에 포함**되었는가?
+- [ ] 저장 버튼이 **이미지크롤링 다음**에 위치하는가? (영상)
+- [ ] 조건부 버튼 로직이 **정확히 적용**되었는가?
+
+#### 🧪 Regression Test 실행
+
+```bash
+cd trend-video-frontend && npm test -- myContentButtons.test.ts
+```
+
+**테스트 커버리지:**
+- 버튼 개수 검증 (4 tests)
+- 버튼 순서 검증 (2 tests)
+- 필수 버튼 존재 검증 (10 tests)
+- 조건부 버튼 검증 (5 tests)
+- 버튼 그룹 순서 검증 (2 tests)
+- 통합 일관성 검증 (5 tests)
+
+**Total: 28 tests** - 모두 통과해야 배포 가능
+
+#### ❌ 절대 하지 말아야 할 것
+
+1. **탭마다 다른 버튼 구성**
+   ```typescript
+   // ❌ 전체 탭: 8개 버튼
+   // ❌ 영상 탭: 9개 버튼
+   // ✅ 전체 탭 = 영상 탭: 동일해야 함
+   ```
+
+2. **버튼 순서 임의 변경**
+   ```typescript
+   // ❌ 삭제 버튼을 중간에 배치
+   // ✅ 삭제는 항상 마지막
+   ```
+
+3. **이미지크롤링 누락**
+   ```typescript
+   // ❌ 일부 탭에만 이미지크롤링 있음
+   // ✅ 모든 탭 모든 카드에 이미지크롤링 필수
+   ```
+
+4. **조건부 버튼 로직 누락**
+   ```typescript
+   // ❌ 쇼츠 버튼이 모든 영상에 표시
+   // ✅ longform 타입만 표시
+   ```
+
+5. **Regression Test 없이 수정**
+   ```typescript
+   // ❌ 버튼 추가/삭제 후 테스트 업데이트 안 함
+   // ✅ 버튼 구조 변경 시 myContentButtons.test.ts도 함께 수정
+   ```
 
 ### 10.4 모달 z-index 규칙
 
