@@ -22,6 +22,7 @@
 9. [로그 관리](#9-로그-관리)
 10. [UI/UX 일관성 규칙](#10-uiux-일관성-규칙) ⭐️ **중요**
 11. [API 에러 처리 규칙](#11-api-에러-처리-규칙) ⭐️ **중요**
+12. [백그라운드 프로세스 중지 기능](#12-백그라운드-프로세스-중지-기능) ⭐️ **중요**
 
 ---
 
@@ -29,27 +30,59 @@
 
 ### 🎯 핵심 규칙 (절대 잊지 말 것!)
 
-⚠️ **2025-01-20 업데이트: ImageFX/Whisk 파일명 랜덤 ID 문제로 정렬 규칙 변경됨**
+⚠️ **2025-01-20 업데이트: 시퀀스 번호 우선, 그 다음 lastModified 정렬**
 
-**모든 이미지/영상 파일 정렬은 생성 시간 기준으로만 정렬:**
-- ✅ **lastModified 오래된 순** → 가장 먼저 생성/다운로드된 파일이 씬 0
+**모든 이미지/영상 파일 정렬 규칙:**
+1. ✅ **시퀀스 번호가 있으면 시퀀스 우선** (01, 02, 03...)
+2. ✅ **시퀀스 번호가 없으면 lastModified 오래된 순**
+3. ✅ **썸네일은 시퀀스 제일 앞 또는 오래된 것 1장**
 
 ### 1.1 이미지 파일 정렬 (롱폼/숏폼 제작)
 
-**위치:** `trend-video-frontend/src/app/api/generate-video-upload/route.ts` (lines 74-81)
+**위치:** `trend-video-frontend/src/app/api/generate-video-upload/route.ts` (lines 95-144)
 
 **배경:**
 - 사용자가 ImageFX/Whisk에서 이미지를 순서대로 생성하고 다운로드
 - 다운로드된 파일명은 랜덤 ID 포함: `Whisk_0dc8dc11...dr.png`, `Image_fx (48).jpg`
-- 파일명으로는 순서를 알 수 없으므로 **생성 시간만이 유일한 신뢰 기준**
+- 일부 사용자는 시퀀스 번호로 파일명 변경: `01.jpg`, `image_02.png`, `scene-03.jpg`
+- **시퀀스 번호가 있으면 시퀀스 우선, 없으면 생성 시간 기준**
 
 **정렬 로직:**
 ```typescript
 // ⚠️ 중요: 이 정렬 로직은 모든 이미지/영상 업로드 API에서 동일하게 적용!
+const extractSequenceNumber = (filename: string): number | null => {
+  // 1. 파일명이 숫자로 시작: "1.jpg", "02.png"
+  const startMatch = filename.match(/^(\d+)\./);
+  if (startMatch) return parseInt(startMatch[1], 10);
+
+  // 2. _숫자. 또는 -숫자. 패턴: "image_01.jpg", "scene-02.png"
+  const seqMatch = filename.match(/[_-](\d{1,3})\./);
+  if (seqMatch) return parseInt(seqMatch[1], 10);
+
+  // 3. (숫자) 패턴: "Image_fx (47).jpg"
+  // 단, 랜덤 ID가 없을 때만
+  const parenMatch = filename.match(/\((\d+)\)/);
+  if (parenMatch && !filename.match(/[_-]\w{8,}/)) {
+    return parseInt(parenMatch[1], 10);
+  }
+
+  return null;
+};
+
 imageFiles.sort((a, b) => {
-  // lastModified 시간으로 정렬 (오래된 순 = 작은 값이 먼저)
-  // → 가장 먼저 다운로드된 이미지가 씬 0
-  // → 마지막에 다운로드된 이미지가 씬 마지막
+  const numA = extractSequenceNumber(a.name);
+  const numB = extractSequenceNumber(b.name);
+
+  // 둘 다 시퀀스 번호가 있으면: 시퀀스 번호로 정렬
+  if (numA !== null && numB !== null) {
+    return numA - numB;
+  }
+
+  // 시퀀스 번호가 하나만 있으면: 시퀀스 번호 있는게 우선
+  if (numA !== null && numB === null) return -1;
+  if (numA === null && numB !== null) return 1;
+
+  // 둘 다 없으면: lastModified로 정렬 (오래된 순)
   return a.lastModified - b.lastModified;
 });
 ```
@@ -58,56 +91,71 @@ imageFiles.sort((a, b) => {
 - 정렬된 이미지는 `image_01.jpg`, `image_02.jpg`, `image_03.jpg` 형식으로 저장
 - **2자리 0-패딩**, **1부터 시작** (씬 번호와 매칭)
 
-**실제 예시 (ImageFX/Whisk):**
+**실제 예시 1 (시퀀스 번호 있음):**
+```
+업로드된 파일:
+- 05.jpg (2025-01-20 10:05:00) [시퀀스: 5]
+- 02.jpg (2025-01-20 10:02:00) [시퀀스: 2]
+- 01.jpg (2025-01-20 10:01:00) [시퀀스: 1]
+- random.jpg (2025-01-20 10:00:00) [시퀀스 없음] ← 가장 오래됨
+
+정렬 후 (시퀀스 우선 → lastModified):
+  씬 0 (폭탄): 01.jpg [시퀀스: 1] → image_01.jpg
+  씬 1: 02.jpg [시퀀스: 2] → image_02.jpg
+  씬 2: 05.jpg [시퀀스: 5] → image_03.jpg
+  씬 3: random.jpg [시퀀스 없음] → image_04.jpg
+```
+
+**실제 예시 2 (ImageFX/Whisk - 시퀀스 번호 없음):**
 ```
 다운로드된 파일 (생성 시간 순):
 - Whisk_700c11aba77838ba4eb42a3e0327693edr.png (2025-01-20 10:00:00) ← 가장 먼저 다운로드
 - Whisk_0dc8dc11252317b817345d04f0009096dr.png (2025-01-20 10:01:00)
 - Whisk_e0b52519831ab8f8d1c41436242106b2dr.png (2025-01-20 10:02:00)
-- Whisk_6a685be3f6a633ea432443867ed6c0a5dr.png (2025-01-20 10:03:00)
-- Whisk_6d387adcefd971ca6ae4fa4b1acc6ad9dr.png (2025-01-20 10:04:00)
-- Whisk_23a3956e84daa4ea3244d56f1a671cb9dr.png (2025-01-20 10:05:00)
-- Image_fx (48).jpg (2025-01-20 10:06:00)
-- Whisk_324a0c83204f880986145f6d0f91511fdr.png (2025-01-20 10:07:00)
-- Whisk_509d4d33513179eac6740f94c7c5785cdr.png (2025-01-20 10:08:00)
-- Whisk_b8657e817ecbdeaa4b54d072863d20a7dr.png (2025-01-20 10:09:00) ← 마지막 다운로드
+- Image_fx (48).jpg (2025-01-20 10:03:00)
+- Whisk_324a0c83204f880986145f6d0f91511fdr.png (2025-01-20 10:04:00) ← 마지막 다운로드
 
-정렬 후 (생성 시간 오래된 순):
+정렬 후 (lastModified 오래된 순 - 시퀀스 번호 없음):
   씬 0 (폭탄): Whisk_700c11aba77838ba4eb42a3e0327693edr.png → image_01.jpg
   씬 1: Whisk_0dc8dc11252317b817345d04f0009096dr.png → image_02.jpg
   씬 2: Whisk_e0b52519831ab8f8d1c41436242106b2dr.png → image_03.jpg
-  씬 3: Whisk_6a685be3f6a633ea432443867ed6c0a5dr.png → image_04.jpg
-  씬 4: Whisk_6d387adcefd971ca6ae4fa4b1acc6ad9dr.png → image_05.jpg
-  씬 5: Whisk_23a3956e84daa4ea3244d56f1a671cb9dr.png → image_06.jpg
-  씬 6: Image_fx (48).jpg → image_07.jpg
-  씬 7: Whisk_324a0c83204f880986145f6d0f91511fdr.png → image_08.jpg
-  씬 8: Whisk_509d4d33513179eac6740f94c7c5785cdr.png → image_09.jpg
-  씬 9: Whisk_b8657e817ecbdeaa4b54d072863d20a7dr.png → image_10.jpg
+  씬 3: Image_fx (48).jpg → image_04.jpg
+  씬 4: Whisk_324a0c83204f880986145f6d0f91511fdr.png → image_05.jpg
 ```
 
-**왜 파일명이 아닌 생성 시간을 사용하는가?**
-- ❌ 파일명: 랜덤 ID(`0dc8dc11...`), 괄호 숫자(`(48)`) → 순서 의미 없음
-- ✅ 생성 시간: 사용자가 이미지를 생성/다운로드한 실제 순서 반영
+**정렬 우선순위:**
+1. ✅ **시퀀스 번호**: 파일명에서 숫자 패턴 추출 (01, image_02, scene-03)
+2. ✅ **생성 시간**: 시퀀스 번호가 없을 때만 사용 (lastModified 오래된 순)
 
 ### 1.2 비디오 파일 정렬 (비디오 병합)
 
-**위치:** `trend-video-frontend/src/app/api/video-merge/route.ts` (lines 46-70)
+**위치:** `trend-video-frontend/src/app/api/video-merge/route.ts` (lines 46-71)
 
-**정렬 로직:** (이미지와 동일)
+**정렬 로직:** (이미지와 동일 - 시퀀스 우선, 그 다음 lastModified)
 ```typescript
+const extractVideoSequenceNumber = (filename: string): number | null => {
+  // scene_001.mp4, video_002.mp4 등의 패턴 (3자리 이상)
+  const match = filename.match(/[_-](\d{3,})\./);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+};
+
 videoFiles.sort((a, b) => {
-  const extractNumber = (filename: string): number | null => {
-    const match = filename.match(/(\d+)/);
-    return match ? parseInt(match[1], 10) : null;
-  };
+  const numA = extractVideoSequenceNumber(a.name);
+  const numB = extractVideoSequenceNumber(b.name);
 
-  const numA = extractNumber(a.name);
-  const numB = extractNumber(b.name);
-
+  // 둘 다 시퀀스 번호가 있으면: 시퀀스 번호로 정렬
   if (numA !== null && numB !== null) {
     return numA - numB;
   }
 
+  // 시퀀스 번호가 하나만 있으면: 시퀀스 번호 있는게 우선
+  if (numA !== null && numB === null) return -1;
+  if (numA === null && numB !== null) return 1;
+
+  // 둘 다 없으면: lastModified로 정렬 (오래된 순)
   return a.lastModified - b.lastModified;
 });
 ```
@@ -119,16 +167,16 @@ videoFiles.sort((a, b) => {
 **예시:**
 ```
 업로드된 파일:
-- clip3.mp4 (2025-01-01 10:00)
-- video.mp4 (2025-01-01 09:00)
-- 1.mp4 (2025-01-01 11:00)
-- scene_10.mp4 (2025-01-01 08:00)
+- scene_005.mp4 (2025-01-01 10:00) [시퀀스: 5]
+- video.mp4 (2025-01-01 09:00) [시퀀스 없음] ← 가장 오래됨
+- scene_001.mp4 (2025-01-01 11:00) [시퀀스: 1]
+- scene_003.mp4 (2025-01-01 08:00) [시퀀스: 3]
 
-정렬 후:
-1. 1.mp4 → 000_1.mp4
-2. clip3.mp4 → 001_clip3.mp4
-3. scene_10.mp4 → 002_scene_10.mp4
-4. video.mp4 → 003_video.mp4 (숫자 없으니 오래된 순: 09:00)
+정렬 후 (시퀀스 우선 → lastModified):
+1. scene_001.mp4 [시퀀스: 1] → 000_scene_001.mp4
+2. scene_003.mp4 [시퀀스: 3] → 001_scene_003.mp4
+3. scene_005.mp4 [시퀀스: 5] → 002_scene_005.mp4
+4. video.mp4 [시퀀스 없음] → 003_video.mp4
 ```
 
 ### 1.3 Python 스크립트 파일 정렬 주의사항
@@ -531,17 +579,22 @@ npm test -- --watch
 #### 파일 정렬 로직 (`file-sorting.test.ts`)
 
 **이미지 정렬** (from `generate-video-upload/route.ts`):
+- **시퀀스 번호 우선, 그 다음 lastModified 오래된 순**
 - 시퀀스 번호 추출 패턴:
   - 숫자로 시작: `1.jpg`, `02.png`
   - 언더스코어: `image_01.jpg`
   - 대시: `scene-02.png`
   - 괄호: `Image_fx (47).jpg` (랜덤 ID 없을 때만)
 - 랜덤 ID 무시: `Whisk_2ea51d84...`
-- lastModified 폴백
+- 정렬 우선순위:
+  1. 시퀀스 번호 있는 파일 → 시퀀스 순으로 정렬
+  2. 시퀀스 번호 없는 파일 → lastModified 순으로 정렬
+  3. 시퀀스 번호 있는 파일이 항상 먼저 옴
 
 **비디오 정렬** (from `video-merge/route.ts`):
-- 3자리 시퀀스: `scene_001.mp4`
-- lastModified 폴백
+- **시퀀스 번호 우선, 그 다음 lastModified 오래된 순**
+- 3자리 시퀀스: `scene_001.mp4`, `video_002.mp4`
+- 정렬 우선순위: 이미지와 동일
 
 #### JSON 제목 추출 (`json-title-extraction.test.ts`)
 
@@ -590,6 +643,87 @@ npm test -- --watch
 - **파일 정렬**: 100% 커버리지 (크리티컬 비즈니스 로직)
 - **제목 추출**: 100% 커버리지 (크리티컬 비즈니스 로직)
 - **전체**: 로직이 많은 코드 >90% 커버리지
+
+### 5.9 AI 모델 선택 테스트 (`aiModelSelection.test.ts`)
+
+**위치:** `trend-video-frontend/__tests__/aiModelSelection.test.ts`
+
+**목적:**
+- ChatGPT, Gemini, Claude 모델 선택이 올바르게 전달되는지 검증
+- 롱폼/숏폼/SORA2/상품 포맷과의 모든 조합 테스트 (총 12개 조합)
+- 프론트엔드 → 백엔드 → Python 명령어 인자까지 전체 흐름 검증
+
+**테스트 카테고리:**
+1. API 요청 파라미터 검증 (scriptModel 전송)
+2. 서버 파라미터 처리 검증 (MODEL_TO_AGENT 매핑)
+3. Python 명령어 인자 검증 (`-a <agent>`)
+4. UnifiedAgent 초기화 검증
+5. 리그레션 방지 (과거 버그 재발 방지)
+6. 통합 테스트 (비디오 포맷 + AI 모델 조합)
+7. Edge Cases (undefined, 빈 문자열, 잘못된 값)
+
+**테스트 실행:**
+```bash
+cd trend-video-frontend
+npm test -- __tests__/aiModelSelection.test.ts
+```
+
+#### 🐛 크리티컬 버그 수정: ChatGPT 선택 무시 (2025-01-20)
+
+**버그 증상:**
+- 사용자가 UI에서 ChatGPT를 선택했는데 Claude가 실행됨
+- 로그에 `-a claude`로 표시됨
+
+**원인:**
+```typescript
+// ❌ 버그: 'chatgpt' 값이 매핑에 없음
+const MODEL_TO_AGENT: Record<string, string> = {
+  'gpt': 'chatgpt',      // 'gpt'만 매핑됨
+  'gemini': 'gemini',
+  'claude': 'claude'
+};
+
+// 프론트엔드에서 실제로 전송하는 값: 'chatgpt'
+// 'chatgpt'가 매핑에 없어서 기본값 'claude' 사용
+const agentName = scriptModel && MODEL_TO_AGENT[scriptModel]
+  ? MODEL_TO_AGENT[scriptModel]
+  : 'claude';  // ← 여기서 claude로 fallback
+```
+
+**해결:**
+```typescript
+// ✅ 수정: 'chatgpt' 매핑 추가
+const MODEL_TO_AGENT: Record<string, string> = {
+  'gpt': 'chatgpt',
+  'chatgpt': 'chatgpt',  // 프론트엔드에서 'chatgpt'로 전송
+  'gemini': 'gemini',
+  'claude': 'claude'
+};
+```
+
+**수정 파일:**
+1. `trend-video-frontend/src/app/api/scripts/generate/route.ts` (line 242)
+   - MODEL_TO_AGENT에 `'chatgpt': 'chatgpt'` 추가
+
+2. `trend-video-frontend/__tests__/aiModelSelection.test.ts` (line 13, 59, 66)
+   - 테스트 케이스 업데이트: 'gpt' → 'chatgpt'
+   - MODEL_TO_AGENT 매핑에 'chatgpt' 추가
+
+**테스트 결과:**
+```bash
+✓ ChatGPT 선택 시 scriptModel: "chatgpt"로 전송되어야 함
+✓ 서버는 scriptModel을 올바른 agent 이름으로 매핑해야 함
+✓ ChatGPT 선택 시 Python에 "-a chatgpt" 인자가 전달되어야 함
+✓ [BUG FIX] ChatGPT 선택 후 대본 생성 시 Claude가 아닌 ChatGPT가 실행되어야 함
+
+Test Suites: 1 passed, 1 total
+Tests:       30 passed, 30 total
+```
+
+**학습 포인트:**
+- 프론트엔드와 백엔드 간 값 매핑이 일치하는지 항상 확인
+- Fallback 기본값은 버그를 숨길 수 있으므로 주의
+- 모든 가능한 입력값을 매핑 테이블에 명시적으로 포함
 
 ---
 
@@ -1283,6 +1417,304 @@ export async function getSession(sessionId: string) {
 - [ ] 에러 로그만 남김 (`console.error`)
 - [ ] 중요 이벤트 로그만 남김
 
+### 4.5 최근 수정 사항 (2025-01-20)
+
+**제거된 로그:**
+- `[fetchScripts] 응답` (page.tsx:467) - 데이터 조회 성공 로그
+- `[전체 탭 더보기]` (page.tsx:2020) - 렌더링 확인 로그 (무한 반복)
+- `✅ JSON 파싱 성공` (page.tsx:1220) - 성공 로그
+- `⚠️ JSON 파싱 실패` (page.tsx:1222) - 디버깅 로그
+- `✅ {"title" 패턴 발견` (page.tsx:1233) - 디버깅 로그
+- `✅ JSON 자동 수정 성공` (page.tsx:1278) - 성공 로그
+
+**유지된 로그:**
+- `JSON 자동 수정 실패` (console.error) - 에러 로그
+- `로컬 JSON 포맷팅 실패` (console.error) - 에러 로그
+- `포멧팅 실패` (console.error) - 에러 로그
+
+### 4.6 JSON 파싱 개선 (2025-01-20)
+
+**문제:**
+- 상품 대본의 `sora_prompt` 필드에 중첩된 따옴표가 많아 파싱 실패
+  - 예: `"a cozy, beige knit sweater"`, `"Pepero Almond"` 등
+- `position 1057/1089` 근처에서 "Expected ',' or '}'" 에러 발생
+- 기존 로직이 긴 필드(`sora_prompt`)를 처리하지 못함
+
+**원인:**
+```typescript
+// ❌ json-utils.ts (line 205): sora_prompt가 빠져있음!
+const otherLongFields = ['image_prompt', 'description', 'text', 'visual_description', 'prompt', 'audio_description'];
+```
+
+**해결:**
+
+1. **백엔드 (json-utils.ts)**
+```typescript
+// ✅ sora_prompt 추가
+const otherLongFields = [
+  'image_prompt', 'description', 'text',
+  'visual_description', 'prompt', 'audio_description',
+  'sora_prompt'  // ← 추가!
+];
+
+// 이미 이스케이프된 따옴표는 유지, 이스케이프 안 된 것만 처리
+fixed = fixed.replace(regex, (match, value) => {
+  let fixedValue = '';
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '\\' && i + 1 < value.length) {
+      fixedValue += value[i] + value[i + 1];  // 이미 이스케이프된 것 유지
+      i++;
+    } else if (value[i] === '"') {
+      fixedValue += '\\"';  // 이스케이프 안 된 것만 처리
+    } else {
+      fixedValue += value[i];
+    }
+  }
+  return `"${field}": "${fixedValue}",`;
+});
+```
+
+2. **프론트엔드 (page.tsx)**
+```typescript
+// ✅ 백엔드와 동일한 로직 적용
+const longFields = [
+  'image_prompt', 'description', 'text',
+  'visual_description', 'prompt', 'audio_description',
+  'sora_prompt'  // ← 추가!
+];
+
+// 백엔드와 동일한 문자별 이스케이프 로직 사용
+```
+
+**위치:**
+- `trend-video-frontend/src/lib/json-utils.ts` (lines 205, 229)
+- `trend-video-frontend/src/app/my-content/page.tsx` (lines 1249-1287)
+
+**효과:**
+- ✅ 상품 대본을 포함한 모든 대본 형식의 JSON 파싱 성공률 향상
+- ✅ 중첩 따옴표가 많은 `sora_prompt` 필드도 정상 처리
+- ✅ 이미 이스케이프된 따옴표는 유지 (중복 이스케이프 방지)
+- ✅ 새로운 긴 필드 추가 시 배열에만 추가하면 됨
+
+### 4.7 Python Job 무한 로그 버그 수정 (2025-01-20)
+
+**문제:**
+- 브라우저가 닫혔는데도 Python 프로세스가 계속 실행되며 무한히 에러 로그 출력
+- "Target page, context or browser has been closed" 에러가 반복됨
+- FOREIGN KEY constraint failed 에러 발생
+
+**증상:**
+```
+[Python] [Claude] Query error (continuing): Page.query_selector: Target page, context or browser has been closed
+Failed to add log: SqliteError: FOREIGN KEY constraint failed
+    at addContentLog (src\lib\content.ts:331:8)
+```
+
+**원인 1: Python agent 에러 핸들링 문제**
+```python
+# ❌ 버그: 브라우저가 닫혀도 계속 진행
+except Exception as e:
+    error_str = str(e)
+    if self.config.get('handle_navigation_errors'):
+        if "Execution context was destroyed" in error_str:
+            # ...
+        else:
+            print(f"[{self.get_name()}] Query error (continuing): {error_str}")
+            # ← 치명적 에러를 무시하고 계속 실행!
+```
+
+**원인 2: FOREIGN KEY 에러**
+- taskId가 DB에서 삭제되었는데도 로그를 계속 추가하려고 시도
+- `content_logs` 테이블의 FOREIGN KEY constraint 위반
+
+**해결책:**
+
+1. **Python agent 즉시 종료** (`trend-video-backend/src/ai_aggregator/agents/agent.py`)
+```python
+# ✅ 수정: 치명적 에러 감지 시 즉시 종료
+consecutive_errors = 0  # 카운터 초기화
+
+while waited < max_wait:
+    try:
+        # ... query logic ...
+    except Exception as e:
+        error_str = str(e)
+
+        # 브라우저/페이지가 닫힌 치명적 에러 - 즉시 종료
+        if "closed" in error_str.lower() or "Target page" in error_str:
+            print(f"[{self.get_name()}] ❌ Fatal error: Browser or page closed")
+            print(f"[{self.get_name()}] Error: {error_str}")
+            raise Exception(f"Browser/page closed: {error_str}")
+
+        # 연속 에러 카운트 증가
+        consecutive_errors += 1
+        if consecutive_errors > 10:
+            print(f"[{self.get_name()}] ❌ Too many consecutive errors ({consecutive_errors}), aborting")
+            raise Exception(f"Too many consecutive errors: {error_str}")
+
+        # 네비게이션 에러는 재시도
+        if "Execution context was destroyed" in error_str:
+            await asyncio.sleep(3)
+            continue
+
+    # 에러 없으면 연속 에러 카운트 리셋
+    consecutive_errors = 0
+```
+
+2. **FOREIGN KEY 에러 방지** (`trend-video-frontend/src/lib/content.ts`)
+```typescript
+// ✅ 수정: contentId 존재 여부 확인 후 로그 추가
+export function addContentLog(contentId: string, logMessage: string): void {
+  // contentId가 존재하는지 먼저 확인
+  const checkStmt = db.prepare('SELECT id FROM contents WHERE id = ?');
+  const exists = checkStmt.get(contentId);
+
+  if (!exists) {
+    // contentId가 없으면 로그를 추가하지 않음 (FOREIGN KEY 에러 방지)
+    console.warn(`[addContentLog] Content ${contentId} does not exist, skipping log`);
+    return;
+  }
+
+  // 로그 추가
+  const stmt = db.prepare(`
+    INSERT INTO content_logs (content_id, log_message)
+    VALUES (?, ?)
+  `);
+  stmt.run(contentId, logMessage);
+}
+```
+
+**수정 파일:**
+1. `trend-video-backend/src/ai_aggregator/agents/agent.py` (lines 366, 426-454)
+   - 연속 에러 카운터 추가
+   - "closed" 에러 감지 시 즉시 raise
+   - 연속 10회 이상 에러 시 자동 종료
+
+2. `trend-video-frontend/src/lib/content.ts` (lines 326-342, 344-367)
+   - `addContentLog`: contentId 존재 여부 확인
+   - `addContentLogs`: contentId 존재 여부 확인
+
+**효과:**
+- ✅ 브라우저 닫힌 후 Python 프로세스 즉시 종료
+- ✅ 무한 에러 로그 스팸 방지
+- ✅ FOREIGN KEY constraint 에러 방지
+- ✅ 연속 에러 발생 시 자동 종료 (무한 루프 방지)
+
+**학습 포인트:**
+- 치명적 에러(브라우저/페이지 닫힘)는 반드시 즉시 raise해야 함
+- 에러를 무시하고 계속 진행하면 무한 루프에 빠질 수 있음
+- FOREIGN KEY constraint는 참조 무결성을 보장하므로, 참조되는 레코드가 존재하는지 먼저 확인
+- 연속 에러 카운터로 비정상 상태를 감지하고 자동 종료
+
+### 4.8 JSON 파싱 에러: HTML 에러 페이지 (2025-01-20)
+
+**문제:**
+```
+SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+```
+
+**원인:**
+API가 에러(404, 500 등)를 반환할 때 HTML 에러 페이지를 반환하는데, 이것을 JSON으로 파싱하려고 시도:
+
+```typescript
+// ❌ 버그: response.ok를 확인하기 전에 .json() 호출
+const response = await fetch('/api/my-scripts');
+const data = await response.json();  // ← HTML이면 파싱 실패!
+
+if (response.ok) {
+  // ...
+}
+```
+
+**해결책:**
+
+1. **공통 헬퍼 함수 생성** (`trend-video-frontend/src/lib/fetch-utils.ts`)
+```typescript
+/**
+ * API 응답을 안전하게 JSON으로 파싱
+ * HTML 에러 페이지를 JSON으로 파싱하려고 시도하는 것을 방지
+ */
+export async function safeJsonResponse<T = any>(response: Response): Promise<T> {
+  // Content-Type 확인
+  const contentType = response.headers.get('content-type');
+
+  // JSON이 아닌 경우 (HTML 에러 페이지 등)
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(`API Error (${response.status}): ${text.substring(0, 200)}`);
+    }
+
+    throw new Error(`Expected JSON response but got: ${contentType}`);
+  }
+
+  // JSON 파싱
+  const data = await response.json();
+
+  // 에러 응답이면 에러 던지기
+  if (!response.ok) {
+    const errorMessage = data.error || data.message || `API Error: ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  return data;
+}
+```
+
+2. **사용 예시** (수정 후)
+```typescript
+// ✅ 안전한 JSON 파싱
+import { safeJsonResponse } from '@/lib/fetch-utils';
+
+const response = await fetch('/api/my-scripts');
+const data = await safeJsonResponse(response);  // ← 자동으로 상태 확인 + JSON 파싱
+
+// response.ok는 이미 safeJsonResponse 내부에서 확인됨
+```
+
+**수정 파일:**
+1. `trend-video-frontend/src/lib/fetch-utils.ts` (신규 생성)
+   - `safeJsonResponse()`: 안전한 JSON 파싱 헬퍼
+   - `fetchJson()`: fetch + safeJsonResponse 래퍼
+
+2. `trend-video-frontend/src/app/my-content/page.tsx`
+   - `fetchScripts()`: line 466
+   - `fetchVideos()`: line 653
+   - `fetchPublishedVideos()`: line 709
+   - `checkAuth()`: line 429
+
+**효과:**
+- ✅ HTML 에러 페이지 파싱 시도 방지
+- ✅ 명확한 에러 메시지 제공
+- ✅ Content-Type 검증으로 안전성 향상
+- ✅ 코드 중복 제거 (공통 헬퍼 사용)
+
+**모범 사례:**
+```typescript
+// ❌ 나쁜 예
+const response = await fetch('/api/endpoint');
+const data = await response.json();  // 에러 시 파싱 실패
+if (response.ok) { /* ... */ }
+
+// ✅ 좋은 예 (방법 1: 헬퍼 사용)
+const response = await fetch('/api/endpoint');
+const data = await safeJsonResponse(response);
+
+// ✅ 좋은 예 (방법 2: 수동 검증)
+const response = await fetch('/api/endpoint');
+if (!response.ok) {
+  throw new Error(`API Error: ${response.status}`);
+}
+const data = await response.json();
+```
+
+**학습 포인트:**
+- 항상 `response.ok`를 확인한 후 `.json()` 호출
+- Content-Type 헤더를 확인하여 JSON 응답인지 검증
+- 공통 에러 처리 로직은 헬퍼 함수로 분리
+- try-catch로 네트워크 에러와 파싱 에러를 모두 처리
+
 ---
 
 ## 5. SSR/Hydration 주의사항
@@ -1820,6 +2252,447 @@ API 작성 시 확인사항:
 - [ ] 에러 메시지는 한글로 작성 (사용자 친화적)
 - [ ] 개발 환경에서는 상세 에러 정보(stack trace) 포함
 - [ ] 프론트엔드에서 errorCode로 분기 처리 가능
+
+---
+
+## 12. 백그라운드 프로세스 중지 기능
+
+### 🎯 핵심 원칙 (절대 잊지 말 것!)
+
+⚠️ **중요: 중지 기능을 수행할 때는 연결된 백그라운드 프로세스도 반드시 중지시켜야 합니다!**
+
+**문제:**
+- 사용자가 "중지" 버튼을 클릭했을 때
+- 프론트엔드에서는 중지된 것처럼 보이지만
+- 실제로는 백엔드 프로세스(Python, DALL-E 등)가 계속 실행되는 문제
+
+**해결:**
+- 단순히 부모 프로세스만 kill하면 자식 프로세스는 계속 실행됨
+- 이중 보호 메커니즘(Dual Protection Mechanism) 사용 필수
+
+### 12.1 이중 보호 메커니즘 (Dual Protection Mechanism)
+
+백그라운드 프로세스를 안전하게 중지하려면 **두 가지 방법을 동시에** 사용해야 합니다:
+
+#### 1. 취소 플래그 파일 (Cancel Flag File) - Graceful Shutdown
+**목적:** Python 스크립트가 주기적으로 확인하여 자연스럽게 종료
+
+```typescript
+// Frontend: DELETE handler in route.ts
+const backendPath = path.join(process.cwd(), '..', 'trend-video-backend');
+const inputFolders = await fs.readdir(path.join(backendPath, 'input'));
+const jobFolder = inputFolders.find(f => f.includes(jobId.replace('upload_', '')));
+
+if (jobFolder) {
+  const cancelFilePath = path.join(backendPath, 'input', jobFolder, '.cancel');
+  await fs.writeFile(cancelFilePath, 'cancelled by user');
+  console.log(`✅ 취소 플래그 파일 생성: ${cancelFilePath}`);
+}
+```
+
+```python
+# Backend: Python script (create_video_from_folder.py)
+# 이미지 생성 루프 내부
+for scene_num, scene in missing_scenes:
+    # 취소 플래그 파일 체크
+    cancel_file = self.folder_path / '.cancel'
+    if cancel_file.exists():
+        logger.warning("🛑 취소 플래그 감지됨. 이미지 생성을 중단합니다.")
+        raise KeyboardInterrupt("User cancelled the operation")
+
+    # 이미지 생성 로직...
+
+# 비디오 처리 루프 내부
+for scene in scenes:
+    # 취소 플래그 파일 체크
+    cancel_file = self.folder_path / '.cancel'
+    if cancel_file.exists():
+        logger.warning("🛑 취소 플래그 감지됨. 영상 생성을 중단합니다.")
+        raise KeyboardInterrupt("User cancelled the operation")
+
+    # 비디오 처리 로직...
+```
+
+#### 2. 프로세스 트리 강제 종료 (Process Tree Kill) - Force Kill
+**목적:** 무한 루프나 응답 없는 프로세스 강제 종료
+
+```typescript
+// Frontend: DELETE handler in route.ts
+import kill from 'tree-kill';
+
+const process = runningProcesses.get(jobId);
+
+if (process && process.pid) {
+  const pid = process.pid;
+  console.log(`🛑 프로세스 트리 종료 시작: Job ${jobId}, PID ${pid}`);
+
+  try {
+    // tree-kill 라이브러리로 프로세스 트리 전체 강제 종료
+    await new Promise<void>((resolve, reject) => {
+      kill(pid, 'SIGKILL', (err) => {
+        if (err) {
+          console.error(`❌ tree-kill 실패: ${err.message}`);
+          reject(err);
+        } else {
+          console.log(`✅ tree-kill 성공: PID ${pid} 및 모든 자식 프로세스 종료`);
+          resolve();
+        }
+      });
+    });
+
+    // Windows 고아 Python 프로세스 정리
+    if (process.platform === 'win32') {
+      await execAsync('taskkill /F /FI "IMAGENAME eq python.exe" /FI "STATUS eq RUNNING" 2>nul');
+      console.log('✅ Windows 좀비 프로세스 정리 완료');
+    }
+  } catch (error: any) {
+    console.error(`❌ tree-kill 실패, taskkill 재시도: ${error.message}`);
+
+    // 실패 시 taskkill 재시도
+    if (process.platform === 'win32') {
+      await execAsync(`taskkill /F /T /PID ${pid}`);
+    }
+  }
+
+  runningProcesses.delete(jobId);
+}
+```
+
+### 12.2 실행 순서가 중요합니다!
+
+⚠️ **반드시 취소 플래그 파일을 먼저 생성하고, 그 다음 프로세스를 kill해야 합니다!**
+
+```typescript
+// ✅ 올바른 순서
+// 1단계: 취소 플래그 파일 생성 (Graceful shutdown)
+await fs.writeFile(cancelFilePath, 'cancelled by user');
+
+// 2단계: 프로세스 강제 종료 (Force kill)
+await kill(pid, 'SIGKILL');
+```
+
+**이유:**
+- 플래그 파일을 먼저 생성하면 Python이 다음 루프에서 감지하고 자연스럽게 종료 시도
+- 그래도 종료 안 되면 프로세스 kill로 강제 종료
+- 순서가 바뀌면 graceful shutdown 기회를 놓침
+
+### 12.3 완전한 구현 예시
+
+**위치:** `trend-video-frontend/src/app/api/generate-video-upload/route.ts` - DELETE handler
+
+```typescript
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const jobId = searchParams.get('jobId');
+
+    if (!jobId) {
+      return NextResponse.json(
+        { error: 'jobId가 필요합니다.' },
+        { status: 400 }
+      );
+    }
+
+    // 사용자 인증 확인
+    const user = await getCurrentUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: '인증이 필요합니다.' },
+        { status: 401 }
+      );
+    }
+
+    // Job 정보 가져오기
+    const job = await getJob(jobId);
+    if (!job) {
+      return NextResponse.json(
+        { error: 'Job을 찾을 수 없습니다.' },
+        { status: 400 }
+      );
+    }
+
+    // 작업 소유권 확인
+    if (job.userId !== user.userId) {
+      return NextResponse.json(
+        { error: '이 작업을 중지할 권한이 없습니다.' },
+        { status: 403 }
+      );
+    }
+
+    // 이미 완료된 작업은 취소 불가
+    if (job.status === 'completed') {
+      return NextResponse.json(
+        { error: '이미 완료된 작업은 취소할 수 없습니다.' },
+        { status: 400 }
+      );
+    }
+
+    // 1단계: 취소 플래그 파일 생성 (Python이 체크하도록)
+    try {
+      const backendPath = path.join(process.cwd(), '..', 'trend-video-backend');
+      const inputFolders = await fs.readdir(path.join(backendPath, 'input'));
+      const jobFolder = inputFolders.find(f => f.includes(jobId.replace('upload_', '')));
+
+      if (jobFolder) {
+        const cancelFilePath = path.join(backendPath, 'input', jobFolder, '.cancel');
+        await fs.writeFile(cancelFilePath, 'cancelled by user');
+        console.log(`✅ 취소 플래그 파일 생성: ${cancelFilePath}`);
+      }
+    } catch (error: any) {
+      console.error(`❌ 취소 플래그 파일 생성 실패: ${error.message}`);
+    }
+
+    // 2단계: 프로세스 강제 종료
+    const process = runningProcesses.get(jobId);
+
+    if (process && process.pid) {
+      const pid = process.pid;
+      console.log(`🛑 프로세스 트리 종료 시작: Job ${jobId}, PID ${pid}`);
+
+      try {
+        // tree-kill 라이브러리로 프로세스 트리 전체 강제 종료
+        await new Promise<void>((resolve, reject) => {
+          kill(pid, 'SIGKILL', (err) => {
+            if (err) {
+              console.error(`❌ tree-kill 실패: ${err.message}`);
+              reject(err);
+            } else {
+              console.log(`✅ tree-kill 성공: PID ${pid} 및 모든 자식 프로세스 종료`);
+              resolve();
+            }
+          });
+        });
+
+        // Windows 고아 Python 프로세스 정리
+        if (process.platform === 'win32') {
+          await execAsync('taskkill /F /FI "IMAGENAME eq python.exe" /FI "STATUS eq RUNNING" 2>nul');
+          console.log('✅ Windows 좀비 프로세스 정리 완료');
+        }
+      } catch (error: any) {
+        console.error(`❌ tree-kill 실패, taskkill 재시도: ${error.message}`);
+
+        // 실패 시 taskkill 재시도
+        if (process.platform === 'win32') {
+          await execAsync(`taskkill /F /T /PID ${pid}`);
+        }
+      }
+
+      runningProcesses.delete(jobId);
+    } else {
+      console.log(`⚠️ 실행 중인 프로세스 없음 (프로세스가 없어도 Job 상태는 업데이트)`);
+    }
+
+    // 3단계: Job 상태 업데이트
+    await updateJob(jobId, {
+      status: 'cancelled',
+      endTime: Date.now(),
+    });
+
+    await addJobLog(jobId, '사용자가 작업을 취소했습니다.');
+
+    return NextResponse.json({
+      success: true,
+      message: '작업이 취소되었습니다.',
+    });
+
+  } catch (error: any) {
+    console.error('DELETE 핸들러 에러:', error);
+    return NextResponse.json(
+      { error: '작업 취소 중 오류가 발생했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### 12.4 자주 하는 실수 (Common Pitfalls)
+
+#### ❌ 실수 1: 부모 프로세스만 kill
+```typescript
+// ❌ 잘못된 예 - 자식 프로세스는 계속 실행됨
+process.kill(pid, 'SIGTERM');
+```
+
+```typescript
+// ✅ 올바른 예 - tree-kill 사용
+kill(pid, 'SIGKILL', callback);
+```
+
+#### ❌ 실수 2: 취소 플래그를 체크하지 않음
+```python
+# ❌ 잘못된 예 - 긴 루프에서 취소 불가
+for i in range(1000):
+    # 무거운 작업...
+    generate_image()
+```
+
+```python
+# ✅ 올바른 예 - 매 루프마다 취소 체크
+for i in range(1000):
+    # 취소 플래그 체크
+    cancel_file = Path('.cancel')
+    if cancel_file.exists():
+        raise KeyboardInterrupt("User cancelled")
+
+    # 무거운 작업...
+    generate_image()
+```
+
+#### ❌ 실수 3: tree-kill을 import만 하고 사용 안 함
+```typescript
+// ❌ 잘못된 예
+import kill from 'tree-kill';  // import만 함
+
+// DELETE 핸들러에서
+await execAsync(`taskkill /F /T /PID ${pid}`);  // tree-kill 안 씀
+```
+
+```typescript
+// ✅ 올바른 예
+import kill from 'tree-kill';
+
+// DELETE 핸들러에서
+await new Promise<void>((resolve, reject) => {
+  kill(pid, 'SIGKILL', (err) => {
+    if (err) reject(err);
+    else resolve();
+  });
+});
+```
+
+#### ❌ 실수 4: 순서가 잘못됨
+```typescript
+// ❌ 잘못된 예 - kill을 먼저 하면 graceful shutdown 기회 없음
+await kill(pid, 'SIGKILL');
+await fs.writeFile(cancelFilePath, 'cancelled');  // 이미 프로세스 죽음
+```
+
+```typescript
+// ✅ 올바른 예 - 플래그 파일을 먼저 생성
+await fs.writeFile(cancelFilePath, 'cancelled');  // 먼저 플래그 생성
+await kill(pid, 'SIGKILL');  // 그 다음 강제 종료
+```
+
+### 12.5 새로운 백그라운드 작업 추가 시 체크리스트
+
+새로운 백그라운드 프로세스를 추가할 때는 다음을 반드시 구현하세요:
+
+- [ ] **DELETE API 엔드포인트 생성**
+  - 사용자 인증 확인
+  - Job 소유권 확인
+  - 이미 완료된 작업은 취소 불가 처리
+
+- [ ] **취소 플래그 파일 메커니즘**
+  - `.cancel` 파일을 작업 폴더에 생성
+  - Python 스크립트에서 매 루프마다 체크
+  - 플래그 감지 시 `KeyboardInterrupt` 발생
+
+- [ ] **프로세스 kill 메커니즘**
+  - `tree-kill` 라이브러리 import
+  - `kill(pid, 'SIGKILL')` 사용
+  - Windows 좀비 프로세스 정리 추가
+  - `runningProcesses` Map에서 관리
+
+- [ ] **실행 순서 보장**
+  - 1단계: 취소 플래그 파일 생성
+  - 2단계: 프로세스 강제 종료
+  - 3단계: Job 상태를 'cancelled'로 업데이트
+
+- [ ] **에러 처리**
+  - 플래그 파일 생성 실패 시 에러 로그
+  - tree-kill 실패 시 taskkill 재시도
+  - 프로세스가 없어도 Job 상태는 업데이트
+
+- [ ] **로깅**
+  - 취소 시작 로그
+  - 플래그 파일 생성 로그
+  - tree-kill 성공/실패 로그
+  - Windows 좀비 프로세스 정리 로그
+  - Python에서 취소 감지 로그
+
+- [ ] **리그레션 테스트 작성**
+  - DELETE API 엔드포인트 검증
+  - 취소 플래그 파일 생성 검증
+  - tree-kill 사용 검증
+  - Python 스크립트 취소 감지 검증
+  - Job 상태 업데이트 검증
+  - 이중 보호 메커니즘 검증
+
+### 12.6 테스트 가이드
+
+**리그레션 테스트 위치:**
+- `__tests__/integration/cancel-video-generation.regression.test.ts`
+
+**테스트 실행:**
+```bash
+# 전체 리그레션 테스트
+npm test -- cancel-video-generation.regression
+
+# 특정 섹션만 실행
+npm test -- -t "취소 플래그 파일 생성"
+
+# watch 모드
+npm test -- --watch cancel-video-generation.regression
+```
+
+**테스트 커버리지:**
+- ✅ DELETE API 엔드포인트 존재 확인
+- ✅ 사용자 인증 확인
+- ✅ Job 소유권 확인
+- ✅ `.cancel` 파일 생성 로직
+- ✅ tree-kill 라이브러리 import 및 사용
+- ✅ runningProcesses Map 관리
+- ✅ Python 스크립트 `.cancel` 체크
+- ✅ `KeyboardInterrupt` 발생
+- ✅ Job 상태 'cancelled' 업데이트
+- ✅ 취소 플래그가 프로세스 kill보다 먼저 실행되는지
+- ✅ 프로세스가 없어도 Job 상태 업데이트
+- ✅ 이미 완료된 작업 취소 불가
+- ✅ 로그 출력 확인
+
+### 12.7 실제 버그 사례
+
+**상황:** 사용자가 쇼츠 변환 중 "중지" 버튼 클릭
+
+**문제:**
+```
+사용자: "내가 중지를 눌렀는데 중지는 front에서는 된거처럼 보이는데
+        실상 서버에서는 다 진행하고 있어 중지가 안되는거지"
+
+로그: [쇼츠 변환 job_xxx] INFO - HTTP Request: POST https://api.openai.com/v1/images/generations
+로그: [쇼츠 변환 job_xxx] INFO - DALL-E 이미지 생성 시작...
+로그: [쇼츠 변환 job_xxx] INFO - DALL-E 이미지 생성 시작...
+```
+
+**원인:**
+- DELETE 핸들러가 `taskkill /F /T /PID` 사용 (불완전)
+- `tree-kill` import만 하고 실제 사용 안 함
+- Python 스크립트에서 취소 플래그 체크 안 함
+- DALL-E subprocess가 계속 실행됨
+
+**해결:**
+- 이중 보호 메커니즘 구현
+- `.cancel` 플래그 파일 생성
+- Python에서 매 루프마다 플래그 체크
+- `tree-kill(pid, 'SIGKILL')` 사용
+
+**결과:**
+- 중지 버튼 클릭 시 즉시 모든 프로세스 중지
+- DALL-E API 호출도 중단됨
+- Job 상태 정확히 'cancelled'로 업데이트
+
+### 12.8 참고 자료
+
+- **구현 파일:**
+  - `trend-video-frontend/src/app/api/generate-video-upload/route.ts` (DELETE handler)
+  - `trend-video-backend/create_video_from_folder.py` (취소 플래그 체크)
+
+- **테스트 파일:**
+  - `__tests__/integration/cancel-video-generation.regression.test.ts`
+
+- **라이브러리:**
+  - `tree-kill`: 프로세스 트리 전체 종료
+  - `child_process.spawn`: Python 프로세스 실행
 
 ---
 
