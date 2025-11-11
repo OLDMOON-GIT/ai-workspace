@@ -2070,6 +2070,66 @@ cd trend-video-frontend && npm test -- myContentButtons.test.ts
 
 **Total: 28 tests** - 모두 통과해야 배포 가능
 
+#### 🎨 버튼 패딩 규칙 ⭐️ **중요**
+
+> ⚠️ **2025-01-20 추가: 버튼 패딩 표준화**
+>
+> **모든 탭의 모든 버튼은 동일한 패딩을 사용해야 합니다!** 패딩 불일치는 시각적 레이아웃 차이를 발생시킵니다.
+
+**규칙:**
+
+```typescript
+// ✅ 올바른 패딩: px-3 py-1.5 (모든 버튼 공통)
+<button className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-500 cursor-pointer whitespace-nowrap">
+  📁 폴더
+</button>
+
+// ❌ 잘못된 패딩: px-4 py-2 (사용 금지)
+<button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white ...">
+  📁 폴더
+</button>
+```
+
+**패딩 규칙 체크리스트:**
+
+- [ ] 모든 탭(전체/영상/대본)의 모든 버튼이 **px-3 py-1.5** 패딩 사용
+- [ ] **px-4 py-2** 같은 다른 패딩 사용 금지
+- [ ] 모든 버튼에 **whitespace-nowrap** 클래스 추가
+- [ ] YouTube 업로드 컴포넌트도 동일한 패딩 사용
+
+**왜 중요한가?**
+
+```
+패딩 차이로 인한 문제:
+
+전체 탭 (px-4 py-2):
+[읽어보기] [폴더] [로그] [이미지크롤링]
+[저장] [쇼츠] [재시도] [삭제]  ← 2줄로 래핑
+
+영상 탭 (px-3 py-1.5):
+[읽어보기] [폴더] [로그] [이미지크롤링] [저장] [쇼츠] [재시도] [삭제]  ← 1줄 유지
+
+→ 동일한 버튼이지만 시각적으로 다르게 보임!
+```
+
+**Regression Test:**
+
+버튼 패딩 일관성 테스트가 추가되었습니다 (6 tests):
+
+```bash
+cd trend-video-frontend && npm test -- myContentButtons.test.ts
+```
+
+테스트는 다음을 검증합니다:
+- 전체 탭 영상 카드 패딩 일관성
+- 전체 탭 대본 카드 패딩 일관성
+- 영상 탭 패딩 일관성
+- 대본 탭 패딩 일관성
+- px-4 py-2 사용 금지
+- whitespace-nowrap 클래스 권장
+
+**Total: 34 tests** (28 기존 + 6 패딩) - 모두 통과해야 배포 가능
+
 #### ❌ 절대 하지 말아야 할 것
 
 1. **탭마다 다른 버튼 구성**
@@ -2101,6 +2161,16 @@ cd trend-video-frontend && npm test -- myContentButtons.test.ts
    ```typescript
    // ❌ 버튼 추가/삭제 후 테스트 업데이트 안 함
    // ✅ 버튼 구조 변경 시 myContentButtons.test.ts도 함께 수정
+   ```
+
+6. **버튼 패딩 불일치 (NEW)**
+   ```typescript
+   // ❌ 전체 탭: px-4 py-2
+   // ❌ 영상 탭: px-3 py-1.5
+   // ✅ 모든 탭: px-3 py-1.5 (동일해야 함)
+
+   // ❌ whitespace-nowrap 누락 (텍스트 래핑 발생)
+   // ✅ 모든 버튼에 whitespace-nowrap 추가
    ```
 
 ### 10.4 모달 z-index 규칙
