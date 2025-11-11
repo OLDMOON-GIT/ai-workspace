@@ -3078,3 +3078,125 @@ YouTube 업로드 | 🔊 읽어보기
 ---
 
 *Last Updated: 2025-01-20*
+
+---
+
+## 14. Critical Issues & Troubleshooting
+
+### 14.1 Tailwind CSS v4 Emoji Parsing Error (2025-01-11)
+
+#### 문제 발생
+- **에러 메시지**: `RangeError: Invalid code point 9061000`
+- **발생 위치**: `@tailwindcss/postcss` (Tailwind CSS v4)
+- **근본 원인**: Tailwind CSS v4의 PostCSS 플러그인이 composite Unicode emojis (예: 👩‍🦰, 👨‍💼)를 파싱할 때 에러 발생
+
+#### 실패한 해결 시도
+1. ❌ Composite emojis를 simple emojis (👩, 👨)로 변경 → 여전히 에러 발생
+2. ❌ Git checkout으로 파일 강제 동기화 → 에러 지속
+3. ❌ `.next` 및 `node_modules/.cache` 삭제 → 에러 지속
+4. ❌ Tailwind CSS 패키지 재설치 → 에러 지속
+5. ❌ `node_modules` 전체 재설치 → 에러 지속
+6. ❌ 모든 emoji 속성 완전 제거 → 에러 지속
+7. ❌ Git rollback to previous commit → 에러 지속 (문제가 코드가 아닌 패키지 자체였음)
+
+#### 최종 해결 방법
+
+**핵심: Tailwind CSS v4 → v3 다운그레이드**
+
+1. **패키지 제거 및 설치**
+```bash
+npm uninstall @tailwindcss/postcss tailwindcss
+npm install -D tailwindcss@3 postcss autoprefixer
+```
+
+2. **postcss.config.mjs 업데이트**
+```javascript
+// BEFORE (v4):
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+// AFTER (v3):
+const config = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+export default config;
+```
+
+3. **globals.css 업데이트**
+```css
+/* BEFORE (v4): */
+@import "tailwindcss";
+
+/* AFTER (v3): */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+4. **tailwind.config.ts 생성**
+```typescript
+import type { Config } from "tailwindcss";
+
+const config: Config = {
+  content: [
+    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+
+export default config;
+```
+
+5. **node_modules 완전 재설치**
+```bash
+rm -rf node_modules .next
+npm install
+```
+
+6. **서버 재시작**
+```bash
+npx kill-port 3000 3001
+npm run dev
+```
+
+#### 교훈
+
+1. **Tailwind CSS v4는 아직 불안정**
+   - Composite Unicode emojis 파싱 이슈
+   - 프로덕션 환경에서는 v3 사용 권장
+
+2. **에러가 코드 문제가 아닐 수 있음**
+   - Rollback해도 에러가 지속되면 패키지 자체 문제 의심
+   - node_modules를 지워도 해결 안 되면 package.json의 패키지 버전 확인
+
+3. **문제 해결 순서**
+   - 코드 수정 시도
+   - 캐시 삭제 (.next, node_modules/.cache)
+   - node_modules 재설치
+   - **패키지 버전 다운그레이드** ← 이 단계를 놓치지 말 것
+
+4. **디버깅 시 주의사항**
+   - 에러 스택에서 패키지 경로 확인: `@tailwindcss/postcss/dist/index.js`
+   - 패키지 이름이 에러에 명시되어 있으면 해당 패키지가 문제일 가능성 높음
+
+#### 관련 파일
+- `C:\Users\oldmoon\workspace\trend-video-frontend\package.json`
+- `C:\Users\oldmoon\workspace\trend-video-frontend\postcss.config.mjs`
+- `C:\Users\oldmoon\workspace\trend-video-frontend\src\app\globals.css`
+- `C:\Users\oldmoon\workspace\trend-video-frontend\tailwind.config.ts`
+
+---
+
+*Last Updated: 2025-01-11*
