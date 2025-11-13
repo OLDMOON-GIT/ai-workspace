@@ -1,0 +1,101 @@
+{
+  "title": "내가 조선의 치킨이다. 조선은 내가 치킨다. 🍗👑",
+  "version": "sora2-1.0",
+  "metadata": {
+    "genre": "SORA2 시네마틱",
+    "format": "9:16 vertical (portrait)",
+    "total_duration_seconds": 24,
+    "style": "cinematic film",
+    "mood": "dramatic, majestic, unexpected",
+    "key_techniques": ["slow motion", "golden hour", "shallow depth of field"],
+    "target_platform": "mobile shorts",
+    "scene_count": 3
+  },
+  "scenes": [
+    {
+      "scene_id": "scene_00_hook",
+      "scene_name": "충격 - 눈길 확 끌기",
+      "duration_seconds": 8,
+      "word_count": 70,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic film, a golden crispy fried chicken piece floating majestically in mid-air surrounded by traditional Korean palace architecture backdrop, full vertical composition with subject centered, extreme slow motion rotation revealing perfect golden texture, dramatic golden hour lighting with high contrast creating divine rays, slowly pushing in intensely, shocking and jaw-dropping mood, shot on 35mm film, shallow depth of field, intense bokeh with traditional patterns, bold and striking color palette mixing gold and royal red, mobile-optimized framing",
+      "narration": "내가 조선의 치킨이다. 조선은 내가 치킨다. 조선시대 궁궐에서 황금빛으로 빛나는 한 조각의 치킨이 있습니다.",
+      "technical_specs": {
+        "resolution": "1080x1920",
+        "aspect_ratio": "9:16",
+        "fps": 24,
+        "camera_movement": "slowly pushing in intensely",
+        "lighting": "dramatic golden hour with high contrast",
+        "depth_of_field": "shallow",
+        "speed": "extreme slow motion"
+      },
+      "scene_breakdown": {
+        "main_subject": "황금빛 치킨이 궁궐 배경에서 떠오름",
+        "action": "극적인 슬로우 모션 회전",
+        "lighting": "신성한 황금빛 조명",
+        "camera": "강렬한 푸시인",
+        "mood": "충격/경이/멈출 수 없음",
+        "color_palette": "황금과 왕실 붉은색"
+      }
+    },
+    {
+      "scene_id": "scene_01_wtf",
+      "scene_name": "헐 대박 - 예상 못한 반전",
+      "duration_seconds": 8,
+      "word_count": 70,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic film, a traditional Korean royal crown slowly descending onto the fried chicken piece in extreme slow motion, full vertical composition with subject centered, intricate crown details catching light as it moves, sudden dramatic lighting shift from gold to regal purple and red, slowly orbiting with tension around the coronation moment, mind-blowing and unbelievable mood, shot on 35mm film, shallow depth of field, dreamy bokeh with royal palace patterns, unexpected contrasting color palette of gold chicken and jeweled crown, mobile-optimized framing",
+      "narration": "그런데 이 치킨은 왕관을 쓰고 국모의 자리에 오릅니다. 이것은 조선 최초의 치킨 국모.",
+      "technical_specs": {
+        "resolution": "1080x1920",
+        "aspect_ratio": "9:16",
+        "fps": 24,
+        "camera_movement": "slowly orbiting with tension",
+        "lighting": "sudden dramatic shift to regal purple",
+        "depth_of_field": "shallow",
+        "speed": "slow motion"
+      },
+      "scene_breakdown": {
+        "main_subject": "왕관이 치킨에게 씌워지는 대관식",
+        "action": "헐 소리 나는 슬로우 모션 순간",
+        "lighting": "극적인 왕실 조명 변화",
+        "camera": "긴장감 있는 오빗",
+        "mood": "경악/놀라움/중독성",
+        "color_palette": "황금 치킨과 보석 왕관 대비"
+      }
+    },
+    {
+      "scene_id": "scene_02_addictive",
+      "scene_name": "중독 - 다시보기 유도",
+      "duration_seconds": 8,
+      "word_count": 70,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic film, the crowned chicken piece sitting majestically on a royal throne with traditional Korean palace hall in background, full vertical composition with subject centered, silk curtains flowing gracefully in slow motion, satisfying magical lighting with soft rays illuminating the scene, slowly pulling away with satisfaction revealing the grand hall, addictive and rewarding mood, shot on 35mm film, shallow depth of field, mesmerizing bokeh with palace lanterns, satisfying and vibrant color palette of royal gold and crimson red, mobile-optimized framing",
+      "narration": "황금 왕관을 쓴 치킨 국모는 지금도 궁궐 어딘가에서 빛나고 있습니다.",
+      "technical_specs": {
+        "resolution": "1080x1920",
+        "aspect_ratio": "9:16",
+        "fps": 24,
+        "camera_movement": "slowly pulling away with satisfaction",
+        "lighting": "satisfying magical lighting",
+        "depth_of_field": "shallow",
+        "speed": "slow motion"
+      },
+      "scene_breakdown": {
+        "main_subject": "왕좌에 앉은 치킨 국모",
+        "action": "중독성 있는 슬로우 모션 마무리",
+        "lighting": "만족감 주는 궁궐 조명",
+        "camera": "여운 남는 풀 아웃",
+        "mood": "중독성/만족감/다시보기 욕구",
+        "color_palette": "왕실 금색과 진홍색"
+      }
+    }
+  ],
+  "quality_check": {
+    "scene_count": 3,
+    "total_duration": 24,
+    "vertical_format": true,
+    "slow_motion": true,
+    "cinematic_style": true,
+    "natural_lighting": true,
+    "emotional_impact": true,
+    "mobile_optimized": true
+  }
+}

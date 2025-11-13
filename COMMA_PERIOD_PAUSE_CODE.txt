@@ -1,0 +1,91 @@
+EXACT CODE: Comma/Period Pause Logic for Longform TTS
+======================================================
+
+1. NATURAL PAUSE LOGIC (Newline-Based)
+
+File: C:\Users\oldmoon\workspace\trend-video-backend\create_video_from_folder.py
+Lines: 846-876
+
+def _add_natural_pauses(self, text: str) -> str:
+    """구두점 뒤에 줄바꿈을 추가하여 자연스러운 쉼 효과"""
+    import re
+
+    # Handle punctuation with quotes first
+    text = text.replace('."', '."\n')
+    text = text.replace('?"', '?"\n')
+    text = text.replace('!"', '!"\n')
+
+    # Ellipsis gets longest pause
+    text = text.replace('...', '...\n')
+
+    # Handle remaining quotes, questions, exclamations
+    text = re.sub(r'"(?!\n)', '"\n', text)
+    text = re.sub(r'\?(?!\n)', '?\n', text)
+    text = re.sub(r'!(?!\n)', '!\n', text)
+
+    # COMMA PAUSE: Add newline after commas
+    text = text.replace(',', ',\n')
+
+    # PERIOD PAUSE: Add newline after periods (but not after numbers)
+    text = re.sub(r'\.(?!\d)(?!\n)', '.\n', text)
+
+    return text
+
+Called in line 890:
+    # 구두점에 쉼표 추가 (자연스러운 쉼표 효과)
+    tts_text = self._add_natural_pauses(clean_text)
+    
+    # Edge TTS로 생성하면서 타임스탬프 수집
+    # rate: -15%로 설정하여 약간 천천히 말하게 함
+    communicate = edge_tts.Communicate(tts_text, self.voice, rate='-15%')
+
+---
+
+2. SSML BREAK LOGIC (Explicit Pause Duration)
+
+File: C:\Users\oldmoon\workspace\trend-video-backend\src\video_generator\narrator.py
+Lines: 790-794 (part of _add_emotion_tags method)
+
+KEY CODE:
+    # 느린 장면 전환에 약간의 pause 추가
+    result_text = ''.join(result)
+    result_text = result_text.replace('.\n', '.<break time="300ms"/>\n')
+    result_text = result_text.replace('!\n', '!<break time="400ms"/>\n')
+    result_text = result_text.replace('?\n', '?<break time="350ms"/>\n')
+    
+    return result_text
+
+SSML Breaks:
+- Period: 300ms
+- Exclamation: 400ms (longer for emphasis)
+- Question: 350ms
+
+---
+
+3. CONTROL COMMANDS
+
+File: C:\Users\oldmoon\workspace\trend-video-backend\src\video_generator\narrator.py
+Lines: 1007-1058
+
+Pattern: r'\[(무음|침묵|pause)\s*(\d+(?:\.\d+)?)?초?\]'
+
+Supported:
+- [무음 N초] = Silence for N seconds (default: 2)
+- [침묵 N초] = Silence for N seconds (default: 3)
+- [pause N초] = Pause for N seconds (default: 2)
+
+---
+
+KEY FINDING:
+
+ACTIVE IN: create_video_from_folder.py
+- Uses _add_natural_pauses() for comma/period handling
+- Inserts newlines that Edge TTS interprets as pauses
+
+NOT ACTIVE IN: narrator.py (used by long_form_creator.py)
+- Does NOT call _add_natural_pauses()
+- Only adds SSML <break> tags (which don't have explicit comma handling)
+- Commas are NOT handled with pauses in long-form TTS
+
+TO FIX: Add _add_natural_pauses() method to narrator.py and call it in generate_speech() method before Edge TTS generation.
+

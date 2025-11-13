@@ -1,0 +1,208 @@
+2025-10-19 19:29:45,055 - AutoShortsEditor.Analyzer - INFO - Analyzing video: AutoShortsEditor\input\ggamang.mp4
+2025-10-19 19:29:46,119 - AutoShortsEditor.Analyzer - INFO - Detecting scene changes...
+2025-10-19 19:29:46,162 - pyscenedetect - INFO - Detecting scenes...
+2025-10-19 19:29:53,698 - AutoShortsEditor.Analyzer - INFO - Found 0 scenes
+2025-10-19 19:29:53,698 - AutoShortsEditor.Analyzer - INFO - Detecting silence...
+2025-10-19 19:29:55,238 - AutoShortsEditor.Analyzer - ERROR - Silence detection failed: arrays to stack must be passed as a "sequence" type such as list or tuple.
+2025-10-19 19:29:55,239 - AutoShortsEditor.Analyzer - INFO - Found 0 silent segments
+2025-10-19 19:29:55,239 - AutoShortsEditor.Analyzer - INFO - Detecting static scenes...
+2025-10-19 19:30:04,628 - AutoShortsEditor.Analyzer - INFO - Found 1 static segments
+2025-10-19 19:30:04,628 - AutoShortsEditor.Editor - INFO - Starting auto-edit: ggamang.mp4
+2025-10-19 19:30:06,025 - AutoShortsEditor.Editor - INFO - Concatenating 1 segments
+2025-10-19 19:30:14,383 - AutoShortsEditor.Transcriber - INFO - Transcribing audio from ggamang.mp4
+2025-10-19 19:30:14,384 - AutoShortsEditor.Transcriber - ERROR - Transcription failed: 'cp949' codec can't encode character '\U0001f3a4' in position 2: illegal multibyte sequence
+2025-10-19 19:30:14,385 - AutoShortsEditor.Editor - ERROR - Failed to add subtitles: 'cp949' codec can't encode character '\u2717' in position 0: illegal multibyte sequence
+2025-10-19 19:30:14,386 - AutoShortsEditor - ERROR - Error: 'cp949' codec can't encode character '\u26a0' in position 0: illegal multibyte sequence
+Traceback (most recent call last):
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\src\transcriber.py", line 34, in transcribe_video
+    print(f"\n🎤 Transcribing audio with Whisper...")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\U0001f3a4' in position 2: illegal multibyte sequence
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\src\editor.py", line 320, in _add_subtitles_to_clip
+    segments = transcriber.transcribe_video(video_path)
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\src\transcriber.py", line 112, in transcribe_video
+    print(f"✗ Transcription failed: {e}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\u2717' in position 0: illegal multibyte sequence
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\run.py", line 412, in main
+    output_path = editor.edit(input_path, analysis, output_path)
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\src\editor.py", line 69, in edit
+    clip = self._add_subtitles_to_clip(clip, video_path, output_path)
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\src\editor.py", line 335, in _add_subtitles_to_clip
+    print(f"⚠ Subtitle generation failed: {e}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\u26a0' in position 0: illegal multibyte sequence
+2025-10-27 06:14:23,012 - create_video_from_folder - INFO - 폴더 경로: input\경계의사람들
+2025-10-27 06:14:23,012 - create_video_from_folder - INFO - 폴더 존재 여부: False
+2025-10-27 06:14:23,013 - create_video_from_folder - INFO - 찾은 story*.json 파일: []
+2025-10-27 06:14:23,013 - AutoShortsEditor - ERROR - From-folder video creation failed: input\경계의사람들에 story로 시작하는 JSON 파일이 없습니다.
+Traceback (most recent call last):
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\run.py", line 383, in main
+    creator = VideoFromFolderCreator(
+        folder_path=args.from_folder,
+    ...<2 lines>...
+        add_subtitles=True  # ?막 기본?로 추?
+    )
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\create_video_from_folder.py", line 81, in __init__
+    self.story_data = self._load_story_json()
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\create_video_from_folder.py", line 163, in _load_story_json
+    raise FileNotFoundError(f"{self.folder_path}에 story로 시작하는 JSON 파일이 없습니다.")
+FileNotFoundError: input\경계의사람들에 story로 시작하는 JSON 파일이 없습니다.
+2025-10-27 06:16:19,463 - create_video_from_folder - INFO - 폴더 경로: input\경계의 사람들
+2025-10-27 06:16:19,463 - create_video_from_folder - INFO - 폴더 존재 여부: False
+2025-10-27 06:16:19,463 - create_video_from_folder - INFO - 찾은 story*.json 파일: []
+2025-10-27 06:16:19,464 - AutoShortsEditor - ERROR - From-folder video creation failed: input\경계의 사람들에 story로 시작하는 JSON 파일이 없습니다.
+Traceback (most recent call last):
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\run.py", line 383, in main
+    creator = VideoFromFolderCreator(
+        folder_path=args.from_folder,
+    ...<2 lines>...
+        add_subtitles=True  # ?막 기본?로 추?
+    )
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\create_video_from_folder.py", line 81, in __init__
+    self.story_data = self._load_story_json()
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\create_video_from_folder.py", line 163, in _load_story_json
+    raise FileNotFoundError(f"{self.folder_path}에 story로 시작하는 JSON 파일이 없습니다.")
+FileNotFoundError: input\경계의 사람들에 story로 시작하는 JSON 파일이 없습니다.
+2025-10-27 06:17:07,220 - AutoShortsEditor - ERROR - From-folder video creation failed: 'cp949' codec can't encode character '\ufffd' in position 19: illegal multibyte sequence
+Traceback (most recent call last):
+  File "C:\Users\oldmoon\workspace\AutoShortsEditor\run.py", line 379, in main
+    print(f"   Folder: {args.from_folder}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\ufffd' in position 19: illegal multibyte sequence
+2025-10-27 06:17:53,941 - create_video_from_folder - INFO - 폴더 경로: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들
+2025-10-27 06:17:53,941 - create_video_from_folder - INFO - 폴더 존재 여부: True
+2025-10-27 06:17:53,941 - create_video_from_folder - INFO - 찾은 story*.json 파일: ['story_v8_1_defector.json']
+2025-10-27 06:17:53,941 - create_video_from_folder - INFO - JSON 파일 로드: story_v8_1_defector.json
+2025-10-27 06:17:56,058 - create_video_from_folder - WARNING - ⚠️  NVIDIA 드라이버가 낮음 (566.14 < 570.0), CPU 인코더 사용
+2025-10-27 06:17:56,058 - create_video_from_folder - INFO -    드라이버 업데이트: https://www.nvidia.com/Download/index.aspx
+2025-10-27 06:17:56,058 - create_video_from_folder - INFO - ✓ Intel QSV GPU 인코더 사용 (h264_qsv)
+2025-10-27 06:17:56,061 - create_video_from_folder - INFO - 기존 generated_videos를 백업합니다: 20251027_061756
+2025-10-27 06:17:56,062 - create_video_from_folder - INFO - 백업 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\backup\20251027_061756
+2025-10-27 06:17:56,062 - create_video_from_folder - INFO - scene_XX 패턴 없음. 모든 이미지를 시간순으로 정렬합니다.
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 1: Whisk_c0e934d050584a3868b41a55c026c83eeg.png (생성시간: 1761373379.675238)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 2: Whisk_a62c5230d01b2009903425fc03eb7157dr.jpeg (생성시간: 1761373458.3009326)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 3: Whisk_7b0c7234eaea9749f3c45cca6c682d1bdr.jpeg (생성시간: 1761373638.4442084)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 4: Whisk_63d43af560716f4bbba47a9805e7b638dr.jpeg (생성시간: 1761373711.7705636)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 5: Whisk_952bf87cc81f82187414c820c614044adr.jpeg (생성시간: 1761373745.2865014)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 6: Whisk_8822d1437c494d5aca24a71d53d1b2a1dr.jpeg (생성시간: 1761373768.3595028)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 7: Whisk_123d09eafdcd5cdb42d421b814386ee2dr.jpeg (생성시간: 1761373804.974811)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 8: Whisk_9fa975b93deffafa7d4439313087a061dr.jpeg (생성시간: 1761373838.6246388)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO -   씬 9: thumbnail.jpg (생성시간: 1761507551.21186)
+2025-10-27 06:17:56,064 - create_video_from_folder - INFO - 이미지 9개 발견
+2025-10-27 06:17:56,065 - create_video_from_folder - INFO - ======================================================================
+2025-10-27 06:17:56,065 - create_video_from_folder - INFO - 1단계: TTS 음성 생성 (병렬 처리)
+2025-10-27 06:17:56,065 - create_video_from_folder - INFO - ======================================================================
+2025-10-27 06:17:56,074 - create_video_from_folder - INFO - ⚡ TTS 병렬 생성: 최대 4개씩 동시 처리 (타임스탬프 포함)
+2025-10-27 06:17:56,075 - create_video_from_folder - INFO - TTS 생성 중: scene_01_audio.mp3
+2025-10-27 06:17:56,250 - create_video_from_folder - INFO - TTS 생성 중: scene_02_audio.mp3
+2025-10-27 06:17:56,414 - create_video_from_folder - INFO - TTS 생성 중: scene_03_audio.mp3
+2025-10-27 06:17:56,583 - create_video_from_folder - INFO - TTS 생성 중: scene_04_audio.mp3
+2025-10-27 06:18:13,078 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 163개 문장
+2025-10-27 06:18:13,285 - create_video_from_folder - INFO - TTS 생성 완료: 468.53초, 단어 558개 (타임스탬프 있음)
+2025-10-27 06:18:15,408 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 180개 문장
+2025-10-27 06:18:15,553 - create_video_from_folder - INFO - TTS 생성 완료: 469.51초, 단어 492개 (타임스탬프 있음)
+2025-10-27 06:18:15,706 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 167개 문장
+2025-10-27 06:18:15,849 - create_video_from_folder - INFO - TTS 생성 완료: 482.95초, 단어 562개 (타임스탬프 있음)
+2025-10-27 06:18:15,953 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 149개 문장
+2025-10-27 06:18:16,099 - create_video_from_folder - INFO - TTS 생성 완료: 499.01초, 단어 638개 (타임스탬프 있음)
+2025-10-27 06:18:16,099 - create_video_from_folder - INFO - TTS 배치 완료: 1~4/8
+2025-10-27 06:18:16,099 - create_video_from_folder - INFO - TTS 생성 중: scene_05_audio.mp3
+2025-10-27 06:18:16,265 - create_video_from_folder - INFO - TTS 생성 중: scene_06_audio.mp3
+2025-10-27 06:18:16,427 - create_video_from_folder - INFO - TTS 생성 중: scene_07_audio.mp3
+2025-10-27 06:18:16,588 - create_video_from_folder - INFO - TTS 생성 중: scene_08_audio.mp3
+2025-10-27 06:18:37,996 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 187개 문장
+2025-10-27 06:18:38,158 - create_video_from_folder - INFO - TTS 생성 완료: 508.30초, 단어 566개 (타임스탬프 있음)
+2025-10-27 06:18:38,329 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 191개 문장
+2025-10-27 06:18:38,481 - create_video_from_folder - INFO - TTS 생성 완료: 533.33초, 단어 602개 (타임스탬프 있음)
+2025-10-27 06:18:38,975 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 206개 문장
+2025-10-27 06:18:39,128 - create_video_from_folder - INFO - TTS 생성 완료: 547.97초, 단어 626개 (타임스탬프 있음)
+2025-10-27 06:18:44,793 - create_video_from_folder - INFO - WordBoundary 없음, SentenceBoundary 사용: 272개 문장
+2025-10-27 06:18:44,991 - create_video_from_folder - INFO - TTS 생성 완료: 711.00초, 단어 768개 (타임스탬프 있음)
+2025-10-27 06:18:44,992 - create_video_from_folder - INFO - TTS 배치 완료: 5~8/8
+2025-10-27 06:18:44,992 - create_video_from_folder - INFO - TTS 생성 완료: 8개
+2025-10-27 06:18:44,992 - create_video_from_folder - INFO - ======================================================================
+2025-10-27 06:18:44,992 - create_video_from_folder - INFO - 3단계: 비디오 생성 및 자막 추가
+2025-10-27 06:18:44,992 - create_video_from_folder - INFO - ======================================================================
+2025-10-27 06:18:44,992 - create_video_from_folder - INFO - 🎬 비디오 인코더: h264_qsv (GPU 가속)
+2025-10-27 06:18:44,993 - create_video_from_folder - INFO - 📊 총 8개 씬 처리 예정
+2025-10-27 06:18:44,993 - create_video_from_folder - INFO - ⚡ 병렬 처리: 4개 워커 (CPU 코어: 16개)
+2025-10-27 06:18:44,993 - create_video_from_folder - INFO - ======================================================================
+2025-10-27 06:18:44,994 - create_video_from_folder - INFO - 
+[1/8] 씬 1 처리 중...
+2025-10-27 06:18:44,994 - create_video_from_folder - INFO - [1/8] 씬 1 비디오 생성 중... (GPU 가속)
+2025-10-27 06:18:44,994 - create_video_from_folder - INFO - 
+[2/8] 씬 2 처리 중...
+2025-10-27 06:18:44,995 - create_video_from_folder - INFO - 씬 1 비디오 + 자막 생성 중...
+2025-10-27 06:18:44,995 - create_video_from_folder - INFO - [2/8] 씬 2 비디오 생성 중... (GPU 가속)
+2025-10-27 06:18:44,995 - create_video_from_folder - INFO - 
+[3/8] 씬 3 처리 중...
+2025-10-27 06:18:44,995 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (638개 단어)
+2025-10-27 06:18:44,995 - create_video_from_folder - INFO - 
+[4/8] 씬 4 처리 중...
+2025-10-27 06:18:44,995 - create_video_from_folder - INFO - 씬 2 비디오 + 자막 생성 중...
+2025-10-27 06:18:44,995 - create_video_from_folder - INFO - [3/8] 씬 3 비디오 생성 중... (GPU 가속)
+2025-10-27 06:18:45,003 - create_video_from_folder - INFO - [4/8] 씬 4 비디오 생성 중... (GPU 가속)
+2025-10-27 06:18:45,003 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (492개 단어)
+2025-10-27 06:18:45,003 - create_video_from_folder - INFO - 씬 3 비디오 + 자막 생성 중...
+2025-10-27 06:18:45,003 - create_video_from_folder - INFO - 씬 4 비디오 + 자막 생성 중...
+2025-10-27 06:18:45,007 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (562개 단어)
+2025-10-27 06:18:45,008 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (558개 단어)
+2025-10-27 06:18:45,019 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 126개 라인
+2025-10-27 06:18:45,021 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 98개 라인
+2025-10-27 06:18:45,021 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 113개 라인
+2025-10-27 06:18:45,021 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 109개 라인
+2025-10-27 06:19:48,090 - create_video_from_folder - INFO - 씬 1 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_01.mp4
+2025-10-27 06:19:48,091 - create_video_from_folder - INFO - [1/8] ✅ 씬 1 완료!
+2025-10-27 06:19:48,091 - create_video_from_folder - INFO - 
+[5/8] 씬 5 처리 중...
+2025-10-27 06:19:48,091 - create_video_from_folder - INFO - [5/8] 씬 5 비디오 생성 중... (GPU 가속)
+2025-10-27 06:19:48,091 - create_video_from_folder - INFO - 씬 5 비디오 + 자막 생성 중...
+2025-10-27 06:19:48,091 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (602개 단어)
+2025-10-27 06:19:48,106 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 121개 라인
+2025-10-27 06:20:09,401 - create_video_from_folder - INFO - 씬 4 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_04.mp4
+2025-10-27 06:20:09,402 - create_video_from_folder - INFO - [4/8] ✅ 씬 4 완료!
+2025-10-27 06:20:09,402 - create_video_from_folder - INFO - 
+[6/8] 씬 6 처리 중...
+2025-10-27 06:20:09,402 - create_video_from_folder - INFO - [6/8] 씬 6 비디오 생성 중... (GPU 가속)
+2025-10-27 06:20:09,402 - create_video_from_folder - INFO - 씬 6 비디오 + 자막 생성 중...
+2025-10-27 06:20:09,403 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (566개 단어)
+2025-10-27 06:20:09,415 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 111개 라인
+2025-10-27 06:20:33,304 - create_video_from_folder - INFO - 씬 2 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_02.mp4
+2025-10-27 06:20:33,304 - create_video_from_folder - INFO - [2/8] ✅ 씬 2 완료!
+2025-10-27 06:20:33,305 - create_video_from_folder - INFO - 
+[7/8] 씬 7 처리 중...
+2025-10-27 06:20:33,305 - create_video_from_folder - INFO - [7/8] 씬 7 비디오 생성 중... (GPU 가속)
+2025-10-27 06:20:33,305 - create_video_from_folder - INFO - 씬 7 비디오 + 자막 생성 중...
+2025-10-27 06:20:33,305 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (626개 단어)
+2025-10-27 06:20:33,322 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 121개 라인
+2025-10-27 06:20:39,672 - create_video_from_folder - INFO - 씬 3 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_03.mp4
+2025-10-27 06:20:39,672 - create_video_from_folder - INFO - [3/8] ✅ 씬 3 완료!
+2025-10-27 06:20:39,673 - create_video_from_folder - INFO - 
+[8/8] 씬 8 처리 중...
+2025-10-27 06:20:39,673 - create_video_from_folder - INFO - [8/8] 씬 8 비디오 생성 중... (GPU 가속)
+2025-10-27 06:20:39,673 - create_video_from_folder - INFO - 씬 8 비디오 + 자막 생성 중...
+2025-10-27 06:20:39,673 - create_video_from_folder - INFO - Edge TTS 타임스탬프로 자막 생성 중... (768개 단어)
+2025-10-27 06:20:39,699 - create_video_from_folder - INFO - Edge TTS 타임스탬프 기반 ASS 자막 완료: 153개 라인
+2025-10-27 06:21:27,213 - create_video_from_folder - INFO - 씬 6 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_06.mp4
+2025-10-27 06:21:27,213 - create_video_from_folder - INFO - [6/8] ✅ 씬 6 완료!
+2025-10-27 06:21:43,324 - create_video_from_folder - INFO - 씬 5 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_05.mp4
+2025-10-27 06:21:43,325 - create_video_from_folder - INFO - [5/8] ✅ 씬 5 완료!
+2025-10-27 06:22:22,476 - create_video_from_folder - INFO - 씬 7 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_07.mp4
+2025-10-27 06:22:22,476 - create_video_from_folder - INFO - [7/8] ✅ 씬 7 완료!
+2025-10-27 06:22:29,457 - create_video_from_folder - INFO - 씬 8 비디오 + 자막 생성 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\scene_08.mp4
+2025-10-27 06:22:29,457 - create_video_from_folder - INFO - [8/8] ✅ 씬 8 완료!
+2025-10-27 06:22:29,460 - create_video_from_folder - INFO - 전체 나레이션 저장: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\full_narration.txt
+2025-10-27 06:22:29,460 - create_video_from_folder - INFO - 📝 최종 영상 제목: 경계의 사람들 → 경계의_사람들.mp4
+2025-10-27 06:22:29,460 - create_video_from_folder - INFO - 🎬 8개 씬 결합 중... (GPU 가속)
+2025-10-27 06:22:31,050 - create_video_from_folder - INFO - ✅ 비디오 결합 완료: C:\Users\oldmoon\workspace\AutoShortsEditor\input\경계의 사람들\generated_videos\경계의_사람들.mp4
