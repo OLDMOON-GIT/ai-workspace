@@ -10,6 +10,10 @@ workspace 프로젝트의 핵심 구현 패턴과 모범 사례 정리
 ### 사용자에게 작업을 시키지 않는다
 - AI가 직접 코드 확인, 로그 분석, 문제 해결
 - 사용자는 결과만 확인
+- **"하라마라" 하지 않기**: 사용자에게 명령을 내리거나 지시하지 않는다
+  - ❌ "이 명령어를 실행하세요", "~해보시겠어요?", "복사해서 붙여넣으세요"
+  - ✅ 바로 작업을 수행하고 결과를 보고
+  - 사용자가 직접 해야 하는 작업이면 자동화 방법을 찾거나, 불가능하면 명확히 설명
 
 ### Claude Code 설치
 - npm 버전 사용 금지 (성능 이슈)
@@ -369,6 +373,55 @@ export function addContentLog(contentId: string, logMessage: string) {
     .run(contentId, logMessage);
 }
 ```
+
+### 🔍 로그 파일 위치 (문제 발생 시)
+
+**프론트엔드 서버 로그:**
+```
+C:\Users\oldmoon\workspace\trend-video-frontend\logs\server.log
+```
+
+**로그 확인 방법:**
+```bash
+# Git Bash에서 (권장 - 한글 정상 표시)
+tail -f trend-video-frontend/logs/server.log
+
+# 단축 명령어 (Git Bash에서 어디서든 사용 가능)
+tlog
+
+# PowerShell에서 (UTF-8 인코딩 필수)
+Get-Content -Path trend-video-frontend\logs\server.log -Encoding UTF8 -Tail 50 -Wait
+```
+
+**단축 명령어 설정:**
+
+Git Bash (`~/.bashrc`에 추가됨):
+```bash
+alias tlog='tail -f /c/Users/oldmoon/workspace/trend-video-frontend/logs/server.log'
+```
+
+PowerShell (`$PROFILE`에 추가됨):
+```powershell
+function tlog {
+    Get-Content -Path C:\Users\oldmoon\workspace\trend-video-frontend\logs\server.log -Encoding UTF8 -Tail 50 -Wait
+}
+```
+
+**단축 명령어 적용:**
+- Git Bash: 새 터미널 열거나 `source ~/.bashrc`
+- PowerShell: 새 터미널 열거나 `. $PROFILE`
+
+**⚠️ 문제 발생 시 로그 확인:**
+- 에러 로그는 **가장 아래부터** 확인
+- 최신 에러가 파일 끝에 추가됨
+- 스택트레이스 전체를 확인하여 원인 파악
+
+**로그 파일 인코딩:**
+- UTF-8 인코딩 사용
+- 한글 깨짐 시 PowerShell 인코딩 설정 확인:
+  ```powershell
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  ```
 
 ---
 
