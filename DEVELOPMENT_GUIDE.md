@@ -21,23 +21,180 @@ workspace 프로젝트의 핵심 구현 패턴과 모범 사례 정리
 
 ## 📋 목차
 
-1. [파일 정렬 규칙](#1-파일-정렬-규칙) ⭐
-2. [자막 싱크 시스템](#2-자막-싱크-시스템) ⭐
-3. [비디오 병합 워크플로우](#3-비디오-병합-워크플로우) ⭐
-4. [Regression Test](#4-regression-test) ⭐
-5. [프론트엔드-백엔드 아키텍처](#5-프론트엔드-백엔드-아키텍처) ⭐
-6. [인증 구현](#6-인증-구현)
-7. [초기 로딩 최적화](#7-초기-로딩-최적화)
-8. [폴링 최소화](#8-폴링-최소화)
-9. [로그 관리](#9-로그-관리)
-10. [UI/UX 일관성](#10-uiux-일관성) ⭐
-11. [API 에러 처리](#11-api-에러-처리) ⭐
-12. [백그라운드 프로세스 중지](#12-백그라운드-프로세스-중지) ⭐
-13. [버튼 배치 규칙](#13-버튼-배치-규칙) ⭐
+1. [영상 생성 3종 세트 규칙](#1-영상-생성-3종-세트-규칙) ⭐⭐⭐
+2. [파일 정렬 규칙](#2-파일-정렬-규칙) ⭐
+3. [자막 싱크 시스템](#3-자막-싱크-시스템) ⭐
+4. [비디오 병합 워크플로우](#4-비디오-병합-워크플로우) ⭐
+5. [Regression Test](#5-regression-test) ⭐
+6. [프론트엔드-백엔드 아키텍처](#6-프론트엔드-백엔드-아키텍처) ⭐
+7. [인증 구현](#7-인증-구현)
+8. [초기 로딩 최적화](#8-초기-로딩-최적화)
+9. [폴링 최소화](#9-폴링-최소화)
+10. [로그 관리](#10-로그-관리)
+11. [UI/UX 일관성](#11-uiux-일관성) ⭐
+12. [API 에러 처리](#12-api-에러-처리) ⭐
+13. [백그라운드 프로세스 중지](#13-백그라운드-프로세스-중지) ⭐
+14. [버튼 배치 규칙](#14-버튼-배치-규칙) ⭐
+15. [API 테스트 프로세스](#15-api-테스트-프로세스) ⭐
+16. [스케줄러 중복 실행 방지](#16-스케줄러-중복-실행-방지) ⭐
+17. [버그 수정 히스토리](#17-버그-수정-히스토리)
 
 ---
 
-## 1. 파일 정렬 규칙
+## 1. 영상 생성 3종 세트 규칙
+
+### 🎯 절대 원칙: 3개 파일은 항상 함께 수정 ⭐⭐⭐
+
+**미디어 처리 관련 수정 시 반드시 3개 파일을 세트로 수정:**
+
+1. **영상 제작 페이지** (Frontend)
+   - `trend-video-frontend/src/app/page.tsx`
+   - 사용자가 직접 미디어를 업로드하는 UI
+
+2. **자동화 스케줄러** (Frontend)
+   - `trend-video-frontend/src/lib/automation-scheduler.ts`
+   - 자동화 시스템에서 스케줄된 영상 생성
+
+3. **백엔드 API** (Frontend API Routes)
+   - `trend-video-frontend/src/app/api/generate-video-upload/route.ts`
+   - 1번과 2번이 호출하는 공통 API
+
+### 왜 3개가 세트인가?
+
+```
+┌─────────────────┐
+│ page.tsx        │ → FormData로 전송
+│ (영상 제작 UI)  │    (thumbnailFile 포함)
+└────────┬────────┘
+         │
+         ├─────────────────────┐
+         │                     │
+         ↓                     ↓
+┌────────────────────────┐    ┌──────────────────────────┐
+│ generate-video-upload  │←───│ automation-scheduler.ts  │
+│ /route.ts              │    │ (자동화 스케줄러)        │
+│                        │    │ JSON으로 전송            │
+│ 공통 API               │    │ (useThumbnailFromFirstImage 포함)
+└────────────────────────┘    └──────────────────────────┘
+```
+
+### 수정 예시: 썸네일 분리 기능
+
+**변경 사항:**
+- 씬이 2개 이상일 때 첫 번째 이미지를 썸네일 전용으로 분리
+
+**수정한 파일:**
+
+1. ✅ `page.tsx` (line 5335-5359)
+   ```typescript
+   // 첫 번째 이미지 찾기
+   const firstImageIndex = allMediaFiles.findIndex(f => f.mediaType === 'image');
+   if (firstImageIndex !== -1) {
+     thumbnailFile = allMediaFiles[firstImageIndex];
+     // FormData에 별도로 추가
+     formData.append('thumbnail', thumbnailFile);
+   }
+   ```
+
+2. ✅ `automation-scheduler.ts` (line 540-560)
+   ```typescript
+   // 자동화: scene_0 이미지를 썸네일로 사용
+   let useThumbnailFromFirstImage = false;
+   if (sceneCount >= 2 && hasUploadedImages && imageFiles.length > 0) {
+     const firstFile = sortedImages[0];
+     if (firstFile && /scene_0.*\.(png|jpg|jpeg|webp)$/i.test(firstFile)) {
+       useThumbnailFromFirstImage = true;
+     }
+   }
+   // requestBody에 플래그 추가
+   requestBody.useThumbnailFromFirstImage = useThumbnailFromFirstImage;
+   ```
+
+3. ✅ `route.ts` (line 36-37, 96, 274-275, 310-311, 403-433)
+   ```typescript
+   // 파라미터 추가
+   let thumbnailFile: File | null = null;
+   let useThumbnailFromFirstImage: boolean = false;
+
+   // FormData에서 썸네일 파일 받기
+   thumbnailFile = formDataGeneral.get('thumbnail') as File | null;
+
+   // JSON에서 플래그 받기
+   useThumbnailFromFirstImage = body.useThumbnailFromFirstImage || false;
+
+   // 썸네일 파일 처리 로직
+   if (config.thumbnailFile) {
+     // 일반 요청: FormData에서 받은 썸네일 저장
+     await fs.writeFile(thumbnailPath, buffer);
+   } else if (config.useThumbnailFromFirstImage && config.scriptId) {
+     // 자동화: 첫 번째 이미지를 썸네일로 복사
+     await fs.copyFile(sourcePath, thumbnailPath);
+   }
+   ```
+
+### ❌ 잘못된 사례
+
+**하나만 수정:**
+```
+❌ page.tsx만 수정 → 영상 제작은 되지만 자동화가 안 됨
+❌ automation-scheduler.ts만 수정 → 자동화만 되고 수동 제작이 안 됨
+❌ route.ts만 수정 → 프론트엔드에서 전달하지 않아 무의미
+```
+
+### ✅ 올바른 사례
+
+**3개 모두 수정:**
+```
+✅ page.tsx: 썸네일 파일을 FormData에 추가
+✅ automation-scheduler.ts: useThumbnailFromFirstImage 플래그 전달
+✅ route.ts: 두 가지 케이스를 모두 처리
+   → 결과: 영상 제작과 자동화 모두 정상 작동
+```
+
+### 컴포넌트 통일 규칙
+
+**이미지 업로드 박스는 한 컴포넌트로 통일:**
+
+현재 이미지 업로드 UI가 3곳에 중복되어 있다면:
+- ❌ 각각 별도 코드로 구현
+- ✅ 공통 컴포넌트로 추출
+
+**권장 구조:**
+```typescript
+// components/MediaUploadBox.tsx
+export function MediaUploadBox({
+  onUpload,
+  accept = "image/*,video/*",
+  maxFiles = 10
+}) {
+  // 드래그앤드롭, 파일 선택, 정렬 기능
+  return <div>...</div>;
+}
+
+// 사용처
+import { MediaUploadBox } from '@/components/MediaUploadBox';
+
+// page.tsx (영상 제작)
+<MediaUploadBox onUpload={handleMediaUpload} />
+
+// automation page (자동화 업로드)
+<MediaUploadBox onUpload={handleAutomationUpload} />
+```
+
+### 체크리스트
+
+**미디어 처리 수정 시 반드시 확인:**
+
+- [ ] `page.tsx` 수정 완료
+- [ ] `automation-scheduler.ts` 수정 완료
+- [ ] `generate-video-upload/route.ts` 수정 완료
+- [ ] 3개 파일 모두 커밋
+- [ ] 테스트: 영상 제작 페이지에서 정상 작동
+- [ ] 테스트: 자동화 스케줄에서 정상 작동
+
+---
+
+## 2. 파일 정렬 규칙
 
 ### 🎯 핵심 규칙
 
@@ -84,7 +241,7 @@ imageFiles.sort((a, b) => {
 
 ---
 
-## 2. 자막 싱크 시스템
+## 3. 자막 싱크 시스템
 
 ### 🎯 핵심 원리
 
@@ -126,7 +283,7 @@ def adjust_subtitle_timing(srt_path: str, target_duration: float):
 
 ---
 
-## 3. 비디오 병합 워크플로우
+## 4. 비디오 병합 워크플로우
 
 ### 🎯 핵심 프로세스
 
@@ -167,7 +324,146 @@ def merge_videos_with_concat(video_paths: List[Path], output_path: Path):
 
 ---
 
-## 4. Regression Test
+## 5. Regression Test
+
+### 🎯 **필수 규칙: 코드 완료 전 테스트 실행** ⭐
+
+**모든 코드 수정 후:**
+1. ❌ 수동 테스트만 하고 완료 보고 금지
+2. ✅ 자동화된 regression test 작성 및 실행
+3. ✅ 서버 로그 확인하여 실제 동작 검증
+4. ✅ 테스트 통과 후에만 완료 보고
+
+### AI 자동 테스트 프로세스 (필수) ⭐
+
+**단계별 프로세스:**
+```
+1. 코드 수정
+   ↓
+2. 리그레션 테스트 작성 (test-*.js)
+   ↓
+3. 테스트 실행
+   ↓
+4. 서버 로그 확인 (trend-video-frontend/logs/server.log)
+   ├─ 성공: 완료 보고
+   └─ 실패: 재시도 (최대 5회)
+       ├─ 5회 내 성공: 완료 보고
+       └─ 5회 실패: 사용자에게 상세 리포트
+```
+
+**재시도 규칙:**
+- 최대 5회 시도
+- 각 시도마다 로그 분석 및 원인 파악
+- 실패 원인에 따라 코드 수정 후 재테스트
+- 5회 실패 시 반드시 사용자에게 리포트:
+  - 시도한 수정 내역
+  - 각 시도의 실패 원인
+  - 현재 상태 및 추가 정보 필요 여부
+
+**테스트 작성 가이드:**
+```javascript
+// 예시: test-automation-folder-path.js
+const fs = require('fs');
+const path = require('path');
+
+let testResults = { passed: 0, failed: 0, tests: [] };
+
+function addTestResult(name, passed, message) {
+  testResults.tests.push({ name, passed, message });
+  if (passed) {
+    testResults.passed++;
+    console.log(`✅ ${name}: ${message}`);
+  } else {
+    testResults.failed++;
+    console.error(`❌ ${name}: ${message}`);
+  }
+}
+
+async function runTests() {
+  console.log('🧪 [테스트명] 시작\n');
+
+  // 테스트 1: 코드 변경 확인
+  const routeContent = fs.readFileSync('path/to/file.ts', 'utf-8');
+  const hasExpectedChange = routeContent.includes('expected-code');
+  addTestResult('코드 변경', hasExpectedChange, '변경사항 확인');
+
+  // 테스트 2: 로직 검증
+  const result = yourLogic('input');
+  addTestResult('로직 검증', result === 'expected', '로직 정상');
+
+  // 테스트 3: 서버 로그 확인 (중요!)
+  const logPath = path.join(__dirname, 'trend-video-frontend', 'logs', 'server.log');
+  if (fs.existsSync(logPath)) {
+    const logContent = fs.readFileSync(logPath, 'utf-8');
+    const hasError = logContent.includes('❌') || logContent.includes('Error:');
+    addTestResult('서버 로그', !hasError, hasError ? '에러 발견' : '정상');
+  }
+
+  // 결과 출력
+  console.log(`\n✅ 통과: ${testResults.passed}/${testResults.tests.length}`);
+  process.exit(testResults.failed === 0 ? 0 : 1);
+}
+
+runTests();
+```
+
+**실행:**
+```bash
+node test-your-feature.js
+# Exit code 0: 통과
+# Exit code 1: 실패
+```
+
+### 서버 로그 관리
+
+**로그 파일 위치:**
+```
+trend-video-frontend/logs/server.log
+```
+
+**서버 시작 시 로그 설정:**
+```bash
+# 개발 서버 시작 (로그 자동 저장)
+cd trend-video-frontend
+npm run dev 2>&1 | tee -a logs/server.log
+```
+
+**로그 확인 명령어:**
+```bash
+# 최근 로그 확인
+tail -100 trend-video-frontend/logs/server.log
+
+# 에러만 필터링
+grep -E "❌|Error|Failed" trend-video-frontend/logs/server.log
+
+# 특정 패턴 검색
+grep "영상 제작" trend-video-frontend/logs/server.log
+```
+
+**AI가 로그를 확인해야 하는 시점:**
+1. ✅ 테스트 실행 직후
+2. ✅ API 호출 후
+3. ✅ Python 프로세스 실행 후
+4. ✅ 에러 발생 시
+
+**로그 검증 예시:**
+```javascript
+// 서버 로그에서 성공 여부 확인
+function checkServerLogs(featureName) {
+  const logPath = path.join(__dirname, 'trend-video-frontend', 'logs', 'server.log');
+  const logContent = fs.readFileSync(logPath, 'utf-8');
+  const recentLogs = logContent.split('\n').slice(-200).join('\n');
+
+  // 특정 패턴 확인
+  const hasSuccess = recentLogs.includes(`✅ ${featureName}`);
+  const hasError = recentLogs.includes(`❌ ${featureName}`) ||
+                   recentLogs.match(new RegExp(`${featureName}.*Error`, 'i'));
+
+  return { success: hasSuccess && !hasError, logs: recentLogs };
+}
+```
+
+---
 
 ### Backend Tests
 
@@ -213,7 +509,7 @@ npm test -- --coverage
 
 ---
 
-## 5. 프론트엔드-백엔드 아키텍처
+## 6. 프론트엔드-백엔드 아키텍처
 
 ### 🎯 핵심 원칙
 
@@ -238,7 +534,7 @@ npm test -- --coverage
 
 ---
 
-## 6. 인증 구현
+## 7. 인증 구현
 
 ### ✅ 권장: httpOnly 쿠키
 
@@ -271,7 +567,7 @@ response.cookies.set('sessionId', sessionId, {
 
 ---
 
-## 7. 초기 로딩 최적화
+## 8. 초기 로딩 최적화
 
 ### 🎯 전략
 
@@ -305,7 +601,7 @@ useEffect(() => {
 
 ---
 
-## 8. 폴링 최소화
+## 9. 폴링 최소화
 
 ### 🎯 규칙
 
@@ -336,7 +632,7 @@ useEffect(() => {
 
 ---
 
-## 9. 로그 관리
+## 10. 로그 관리
 
 ### 구조
 
@@ -425,7 +721,7 @@ function tlog {
 
 ---
 
-## 10. UI/UX 일관성
+## 11. UI/UX 일관성
 
 ### 🎯 핵심 규칙
 
@@ -447,7 +743,7 @@ function tlog {
 
 ---
 
-## 11. API 에러 처리
+## 12. API 에러 처리
 
 ### 🎯 표준 패턴
 
@@ -480,7 +776,7 @@ if (!response.ok) {
 
 ---
 
-## 12. 백그라운드 프로세스 중지
+## 13. 백그라운드 프로세스 중지
 
 ### 🎯 이중 보호 메커니즘
 
@@ -525,7 +821,7 @@ if (process.platform === 'win32') {
 
 ---
 
-## 13. 버튼 배치 규칙
+## 14. 버튼 배치 규칙
 
 ### 영상 카드 버튼 순서
 
@@ -578,7 +874,289 @@ if (process.platform === 'win32') {
 
 ---
 
-## 14. 버그 수정 히스토리
+## 15. API 테스트 프로세스
+
+### 🎯 핵심 원칙
+
+**절대 테스트 없이 완료하지 않는다**
+- 코드 작성 후 반드시 실제 테스트 수행
+- 서버 로그를 확인하여 응답 검증
+- 타임스탬프로 요청-응답 매칭
+
+### API 테스트 방법
+
+**1. 테스트 스크립트 작성**
+
+```javascript
+// test-api.js
+const fetch = require('node-fetch');
+
+const API_URL = 'http://localhost:3000/api/endpoint';
+
+fetch(API_URL, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ key: 'value' })
+})
+  .then(res => res.json())
+  .then(data => {
+    console.log('✅ 성공:', data);
+  })
+  .catch(error => {
+    console.error('❌ 에러:', error.message);
+  });
+```
+
+**2. 실행 및 로그 확인**
+
+```bash
+# 테스트 실행
+node test-api.js
+
+# 서버 로그 확인 (별도 터미널)
+tail -30 trend-video-frontend/logs/server.log
+```
+
+**3. 응답 검증**
+
+서버 로그에서 확인할 사항:
+- 요청 시간과 응답 시간 매칭
+- HTTP 상태 코드 (200, 400, 500 등)
+- 에러 메시지 및 스택트레이스
+- 실제 응답 데이터
+
+### 쿠팡 API 테스트 예시
+
+**테스트 스크립트:** `test-coupang-api.js`
+
+```javascript
+const crypto = require('crypto');
+
+const accessKey = 'YOUR_ACCESS_KEY';
+const secretKey = 'YOUR_SECRET_KEY';
+
+// Datetime format: yymmddTHHMMSSZ
+const now = new Date();
+const year = String(now.getUTCFullYear()).slice(-2);
+const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+const day = String(now.getUTCDate()).padStart(2, '0');
+const hours = String(now.getUTCHours()).padStart(2, '0');
+const minutes = String(now.getUTCMinutes()).padStart(2, '0');
+const seconds = String(now.getUTCSeconds()).padStart(2, '0');
+const datetime = `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+
+// Message: datetime + method + path (no spaces)
+const REQUEST_METHOD = 'GET';
+const URL = '/v2/providers/affiliate_open_api/apis/openapi/v1/products/bestcategories/1001';
+const message = datetime + REQUEST_METHOD + URL;
+
+// HMAC signature
+const signature = crypto
+  .createHmac('sha256', secretKey)
+  .update(message)
+  .digest('hex');
+
+// Authorization header (spaces after commas)
+const authorization = `CEA algorithm=HmacSHA256, access-key=${accessKey}, signed-date=${datetime}, signature=${signature}`;
+
+console.log('🔐 인증 정보:');
+console.log('   datetime:', datetime);
+console.log('   message:', message);
+console.log('   signature:', signature);
+
+// API 호출
+fetch('https://api-gateway.coupang.com' + URL, {
+  method: REQUEST_METHOD,
+  headers: {
+    'Authorization': authorization,
+    'Content-Type': 'application/json'
+  }
+})
+  .then(response => {
+    console.log('📡 응답 상태:', response.status);
+    return response.text().then(text => ({ status: response.status, text, ok: response.ok }));
+  })
+  .then(({ status, text, ok }) => {
+    console.log('📦 응답 본문:', text);
+    if (ok) {
+      console.log('✅ 성공!');
+    } else {
+      console.error('❌ 실패:', status);
+    }
+  })
+  .catch(error => {
+    console.error('❌ 에러:', error.message);
+  });
+```
+
+**실행:**
+```bash
+node test-coupang-api.js
+```
+
+**성공 응답 예시:**
+```
+📡 응답 상태: 200
+📦 응답 본문: {"rCode":"0","rMessage":"성공","data":[...]}
+✅ 성공!
+```
+
+### 서버 로그 분석
+
+**로그 확인 시 주의사항:**
+
+1. **시간 매칭**: 테스트 실행 시간과 로그 타임스탬프 확인
+2. **요청 정보**: HTTP 메서드, URL, 파라미터
+3. **응답 정보**: 상태 코드, 응답 본문
+4. **에러 추적**: 스택트레이스, 에러 메시지
+
+**예시:**
+```
+[2025-11-14 16:58:13] 🔍 Coupang API Test - 요청 받음
+[2025-11-14 16:58:13]    accessKey: 8943cf3b-8...
+[2025-11-14 16:58:13]    secretKey: provided
+[2025-11-14 16:58:13] 🔐 인증 정보:
+[2025-11-14 16:58:13]    datetime: 251114T075813Z
+[2025-11-14 16:58:13]    message: 251114T075813ZGET/v2/providers/...
+[2025-11-14 16:58:13] 🌐 쿠팡 API 호출 시작: https://api-gateway.coupang.com/...
+[2025-11-14 16:58:14] 📡 쿠팡 API 응답 상태: 200
+[2025-11-14 16:58:14] ✅ 쿠팡 API 성공: {"rCode":"0",...}
+```
+
+### 수정 사이클
+
+```
+1. 코드 작성
+2. 테스트 스크립트 작성
+3. 테스트 실행
+4. 서버 로그 확인
+5. 에러 발견 시 → 코드 수정 → 2번으로
+6. 성공 시 → 완료
+```
+
+**❌ 잘못된 방법:**
+- 코드만 작성하고 "완료되었습니다" 보고
+- 로그 확인 없이 추측으로 문제 해결
+- 여러 번 시행착오 후 포기
+
+**✅ 올바른 방법:**
+- 테스트 스크립트로 실제 실행
+- 로그에서 정확한 에러 확인
+- 에러 원인 분석 후 수정
+- 재테스트로 검증
+
+---
+
+## 16. 사연 영상 생성 시스템 (2025-11-15 추가) ⭐
+
+### 🎯 개요
+
+유튜브 사연 영상의 표준 구조(훅 + CTA + 본문)를 롱폼과 숏폼 모두에 적용
+
+### 핵심 구조
+
+**롱폼 (60분+)**:
+```
+Scene 1:
+├─ 훅 (30초-1분): 극적인 대사/상황
+├─ CTA: "사연 시작 전에 무료로 할 수 있는 구독과 좋아요 부탁드립니다..."
+└─ 본문: 본격적인 사연 시작
+
+Scene 2~12:
+└─ 이어지는 스토리
+```
+
+**숏폼 (60초)**:
+```
+├─ 훅 (5-10초): 강렬한 시작
+├─ CTA (3-5초): "구독과 좋아요 부탁드립니다."
+└─ 본문 (40-50초): 핵심 + 반전
+```
+
+### 프롬프트 템플릿 위치
+
+```
+trend-video-backend/src/prompts/
+├─ long_form_prompt.txt       # 롱폼
+├─ short_story_system.txt     # 숏폼 시스템
+└─ short_story_user.txt       # 숏폼 사용자
+```
+
+### 테스트 실행
+
+```bash
+node test-story-generation.js
+```
+
+**결과**: 20/20 통과 ✅
+
+### 자세한 내용
+
+- **롱폼 가이드**: [LONGFORM_STORY_GUIDE.md](LONGFORM_STORY_GUIDE.md)
+- **숏폼 가이드**: [SHORTFORM_STORY_GUIDE.md](SHORTFORM_STORY_GUIDE.md)
+- **종합 가이드**: [STORY_GENERATION_COMPLETE.md](STORY_GENERATION_COMPLETE.md)
+
+---
+
+## 17. 스케줄러 중복 실행 방지
+
+### 🎯 핵심 규칙
+
+**레이스 컨디션 방지를 위한 원자적 상태 업데이트**
+
+### ❌ 잘못된 방법 (레이스 컨디션 발생)
+
+```typescript
+// 1. 조회
+const pendingSchedules = getPendingSchedules();
+
+// 2. 상태 변경
+updateScheduleStatus(schedule.id, 'processing');
+
+// ⚠️ 문제: 1과 2 사이에 다른 스케줄러가 같은 스케줄을 가져갈 수 있음!
+```
+
+### ✅ 올바른 방법 (원자적 업데이트)
+
+```typescript
+// 1. WHERE 조건에 현재 상태를 포함하여 원자적으로 업데이트
+const result = db.prepare(`
+  UPDATE video_schedules
+  SET status = 'processing', updated_at = CURRENT_TIMESTAMP
+  WHERE id = ? AND status = 'pending'
+`).run(schedule.id);
+
+// 2. 업데이트된 row 수 확인
+if (result.changes === 0) {
+  // 다른 스케줄러가 이미 처리 중
+  console.log('Already being processed by another scheduler');
+  continue;
+}
+
+// 3. 파이프라인 생성
+const pipelineIds = createPipeline(schedule.id);
+```
+
+### 핵심 포인트
+
+1. **마킹을 먼저 해라**: 상태 업데이트를 가장 먼저 수행
+2. **WHERE 조건에 현재 상태 포함**: `AND status = 'pending'`
+3. **업데이트 결과 확인**: `result.changes === 0`이면 이미 처리 중
+4. **중복 파이프라인 체크**: 파이프라인 존재 여부도 확인
+
+### 적용 위치
+
+- `automation-scheduler.ts`: `processPendingSchedules()`
+- `force-execute/route.ts`: 즉시 실행 API
+- 모든 concurrent 작업 처리
+
+### 참고
+
+**파일:** `trend-video-frontend/src/lib/automation-scheduler.ts:100-135`
+
+---
+
+## 18. 버그 수정 히스토리
 
 ### Tailwind CSS v4 Emoji Parsing Error
 
@@ -614,4 +1192,4 @@ longFields.forEach(field => {
 
 ---
 
-*Last Updated: 2025-01-20*
+*Last Updated: 2025-11-15*
