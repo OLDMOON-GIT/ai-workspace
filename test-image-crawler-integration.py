@@ -118,19 +118,23 @@ def run_integration_test(story_json_path):
 
         # Windows에서 stdout/stderr을 파일로 리다이렉트하여 인코딩 문제 해결
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.log') as stdout_file, \
-             tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.log') as stderr_file:
-
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.log') as stdout_file:
             stdout_path = stdout_file.name
+
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.log') as stderr_file:
             stderr_path = stderr_file.name
 
-        result = subprocess.run(
-            ["python", script_path, "--use-imagefx", story_json_path],
-            stdout=open(stdout_path, 'w', encoding='utf-8', errors='replace'),
-            stderr=open(stderr_path, 'w', encoding='utf-8', errors='replace'),
-            timeout=300,  # 5분 타임아웃
-            env=env
-        )
+        # 파일 핸들 열기
+        with open(stdout_path, 'w', encoding='utf-8', errors='replace') as out_f, \
+             open(stderr_path, 'w', encoding='utf-8', errors='replace') as err_f:
+
+            result = subprocess.run(
+                ["python", script_path, "--use-imagefx", story_json_path],
+                stdout=out_f,
+                stderr=err_f,
+                timeout=300,  # 5분 타임아웃
+                env=env
+            )
 
         # 로그 파일 읽기
         with open(stdout_path, 'r', encoding='utf-8', errors='replace') as f:
