@@ -46,6 +46,47 @@ workspace 프로젝트의 핵심 구현 패턴과 모범 사례 정리
 
 ---
 
+## 🛠️ 스크립트 & 테스트 파일 구조
+
+### ⚠️ workspace 루트의 유틸리티 파일
+
+workspace 루트에 있는 모든 `.js` 파일들은 **유틸리티/개발 스크립트**입니다. 실제 프로젝트 코드는 아니고, 개발 과정에서 사용되는 도우미 스크립트들입니다.
+
+**위치:** `scripts/` 폴더 내 정리됨
+```
+scripts/
+├── tests/
+│   ├── frontend/ (48개 프론트엔드 테스트)
+│   │   └── test-*.js, test-*.json
+│   └── backend/ (32개 백엔드 테스트)
+│       └── test-*.js
+└── utils/ (일반 유틸리티 스크립트)
+    └── *.js
+```
+
+### 프로젝트별 테스트
+
+각 프로젝트 내에도 테스트 파일들이 복사되어 있어서 해당 프로젝트에서 직접 실행 가능합니다:
+
+**Frontend 테스트:**
+```bash
+cd trend-video-frontend
+node scripts/tests/test-automation-queue-flow.js
+```
+
+**Backend 테스트:**
+```bash
+cd trend-video-backend
+node scripts/tests/test-automation-complete-flow.js
+```
+
+### 테스트 파일 분류 기준
+
+- **프론트엔드**: UI, 페이지, 컴포넌트, YouTube, 이미지 관련
+- **백엔드**: 데이터베이스, API, 자동화, 스케줄러 관련
+
+---
+
 ## 🌏 기본 규칙
 
 ### AI와의 대화는 한글로 진행
