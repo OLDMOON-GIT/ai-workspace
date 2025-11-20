@@ -1,0 +1,69 @@
+{
+  "testName": "스케줄러 시작/중지",
+  "category": "자동화 시스템",
+  "timestamp": "2025-11-15T05:09:49.936Z",
+  "passed": true,
+  "summary": {
+    "total": 11,
+    "passed": 11,
+    "failed": 0,
+    "percentage": 100
+  },
+  "tests": [
+    {
+      "name": "1-1. toggleScheduler 함수",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "1-2. 스케줄러 API 호출",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "1-3. start/stop 액션",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-1. 스케줄러 상태 관리",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-2. 상태 표시 UI",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-1. API 파일 존재",
+      "passed": true,
+      "message": "route.ts 확인"
+    },
+    {
+      "name": "3-2. POST 메서드",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-3. start 액션 처리",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-4. stop 액션 처리",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "4-1. 스케줄러 제어 버튼",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "4-2. 조건부 버튼 텍스트",
+      "passed": true,
+      "message": "확인"
+    }
+  ]
+}

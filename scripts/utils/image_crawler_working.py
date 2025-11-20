@@ -890,11 +890,19 @@ def input_prompt_to_whisk(driver, prompt, wait_time=WebDriverWait, is_first=Fals
             input_box.click()
             time.sleep(0.3)
 
-        # Ctrl+V로 붙여넣기만 수행
+            # 기존 텍스트 전체 선택 및 삭제 (중요: 이전 프롬프트 제거)
+            actions = ActionChains(driver)
+            actions.key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL).perform()
+            time.sleep(0.2)
+            actions.send_keys(Keys.DELETE).perform()
+            time.sleep(0.2)
+            print(f"🗑️ 기존 입력 내용 삭제 완료", flush=True)
+
+        # Ctrl+V로 붙여넣기 수행
         actions = ActionChains(driver)
         actions.key_down(Keys.CONTROL).send_keys('v').key_up(Keys.CONTROL).perform()
         print(f"✅ Ctrl+V 붙여넣기 완료", flush=True)
-        time.sleep(0.5)
+        time.sleep(0.8)
 
         # 엔터 키 입력
         actions = ActionChains(driver)
@@ -1207,6 +1215,11 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             # Google 이미지 정책 위반 방지를 위해 프롬프트 안전화
             safe_prompt = sanitize_prompt_for_google(prompt)
 
+            # 디버그: 원본 프롬프트 일부 출력 (중복 확인용)
+            print(f"\n🔍 {scene_number} 원본 프롬프트 확인:", flush=True)
+            print(f"   첫 100자: {prompt[:100]}...", flush=True)
+            print(f"   마지막 50자: ...{prompt[-50:]}", flush=True)
+
             max_retries = 2
             for attempt in range(max_retries):
                 print(f"\n{'-'*80}", flush=True)
@@ -1244,14 +1257,15 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                     print(f"✅ 위반 메시지 없음. 다음으로 진행합니다.", flush=True)
                     break  # 위반 없음, 재시도 루프 탈출
             
-            # 타이밍 제어
-            if i >= 2:  # scene_02부터
-                delay = 15
-                print(f"\n⏳ 다음 씬까지 {delay}초 대기 중...", flush=True)
-                time.sleep(delay)
-            elif i == 1:  # scene_01은 짧은 대기
-                delay = 2
-                print(f"\n⏳ 다음 씬까지 {delay}초 대기 중...", flush=True)
+            # 타이밍 제어 - 각 프롬프트 제출 후 충분한 대기 시간 확보
+            if i < len(scenes) - 1:  # 마지막 씬이 아니면
+                if i == 0:  # 첫 번째 씬 후
+                    delay = 3
+                elif i == 1:  # 두 번째 씬 후
+                    delay = 5
+                else:  # 그 이후
+                    delay = 15
+                print(f"\n⏳ 다음 씬까지 {delay}초 대기 중 (Whisk 처리 시간 확보)...", flush=True)
                 time.sleep(delay)
 
         print(f"\n{'='*80}", flush=True)

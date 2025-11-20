@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-11-15T20:53:11.158Z",
+  "summary": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "errors": 0,
+    "inProgress": 0
+  },
+  "results": [
+    {
+      "name": "이미지 업로드 API 엔드포인트 존재 확인",
+      "status": "PASS"
+    },
+    {
+      "name": "automation/page.tsx 업로드 UI 확인",
+      "status": "PASS"
+    },
+    {
+      "name": "자동화 → 내 콘텐츠 이동 버튼 확인",
+      "status": "PASS"
+    },
+    {
+      "name": "내 콘텐츠 하이라이트 기능 확인",
+      "status": "PASS"
+    },
+    {
+      "name": "쿠팡 탭 제거 확인",
+      "status": "PASS"
+    },
+    {
+      "name": "video_schedules 테이블에 youtube_url 컬럼 존재",
+      "status": "PASS"
+    },
+    {
+      "name": "automation_pipelines UNIQUE 제약조건 존재",
+      "status": "PASS"
+    },
+    {
+      "name": "video_titles 테이블 존재",
+      "status": "PASS"
+    },
+    {
+      "name": "Shortform CTA 프롬프트",
+      "status": "PASS"
+    }
+  ]
+}

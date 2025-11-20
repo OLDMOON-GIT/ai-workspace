@@ -1,0 +1,45 @@
+{
+  "timestamp": "2025-11-15T20:22:30.809Z",
+  "summary": {
+    "total": 7,
+    "passed": 5,
+    "failed": 2,
+    "errors": 0,
+    "skipped": 0,
+    "warnings": 0
+  },
+  "results": [
+    {
+      "name": "이미지 미업로드 시나리오",
+      "status": "PASS",
+      "result": "이미지 0개 발견"
+    },
+    {
+      "name": "Vertex AI 빌링 비활성화 시나리오",
+      "status": "FAIL",
+      "error": "media_mode 설정 미확인"
+    },
+    {
+      "name": "스크립트 ID 누락 시나리오",
+      "status": "PASS",
+      "result": "story.json 없음"
+    },
+    {
+      "name": "동시 작업 처리 시나리오",
+      "status": "PASS"
+    },
+    {
+      "name": "TDZ 에러 재현 시나리오",
+      "status": "FAIL",
+      "error": "process1 변수를 찾을 수 없음"
+    },
+    {
+      "name": "Python 스크립트 백업 함수 비활성화 확인",
+      "status": "PASS"
+    },
+    {
+      "name": "영상 생성 후 backup 폴더 존재 확인",
+      "status": "PASS"
+    }
+  ]
+}

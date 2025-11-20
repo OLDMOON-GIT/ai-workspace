@@ -1,0 +1,104 @@
+{
+  "testName": "영상 제작 페이지",
+  "category": "영상 제작 페이지",
+  "timestamp": "2025-11-15T04:42:28.667Z",
+  "passed": false,
+  "summary": {
+    "total": 18,
+    "passed": 17,
+    "failed": 1,
+    "percentage": 94.4
+  },
+  "tests": [
+    {
+      "name": "1-1. JSON 상태 관리",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "1-2. JSON 파일 입력",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "1-3. 드래그 앤 드롭",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-1. 이미지 상태 관리",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-2. 이미지 타입 필터링",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-3. 이미지 개수 제한",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-1. 순번순 정렬 버튼",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-2. 시간순 정렬 버튼",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-3. 시퀀스 번호 추출",
+      "passed": false,
+      "message": "누락"
+    },
+    {
+      "name": "4-1. 드래그 상태 관리",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "4-2. 수동 정렬 모드",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "4-3. 수동 정렬 배열",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "5-1. 포맷 상태 관리",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "5-2. 포맷 선택 버튼",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "6-1. TTS 음성 상태",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "6-2. 음성 선택 옵션",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "7-1. 이미지 모델 상태",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "7-2. 모델 선택 옵션",
+      "passed": true,
+      "message": "확인"
+    }
+  ]
+}

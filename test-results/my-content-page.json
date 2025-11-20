@@ -1,0 +1,84 @@
+{
+  "testName": "내 콘텐츠 페이지",
+  "category": "내 콘텐츠 페이지",
+  "timestamp": "2025-11-15T04:42:32.445Z",
+  "passed": true,
+  "summary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0,
+    "percentage": 100
+  },
+  "tests": [
+    {
+      "name": "1-1. 작업 목록 상태",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "1-2. 작업 조회 API",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "1-3. 자동 로딩",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-1. 상태 표시",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-2. 진행률 표시",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "2-3. 자동 새로고침",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-1. 폴더 열기 버튼",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "3-2. 폴더 열기 함수",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "4-1. 삭제 버튼",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "4-2. 삭제 핸들러",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "4-3. 삭제 확인",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "5-1. 필터 상태",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "5-2. 타입 버튼",
+      "passed": true,
+      "message": "확인"
+    },
+    {
+      "name": "5-3. 필터링 로직",
+      "passed": true,
+      "message": "확인"
+    }
+  ]
+}
