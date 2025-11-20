@@ -1,0 +1,34 @@
+# 임시 파일 폴더
+temp/
+
+# 의존성
+node_modules/
+venv/
+
+# 환경 설정
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 빌드 결과
+.next/
+.gradle/
+dist/
+build/
+
+# 로그
+*.log
+
+# 캐시
+__pycache__/
+*.pyc
+.pytest_cache/
