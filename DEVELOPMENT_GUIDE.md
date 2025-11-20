@@ -2,6 +2,50 @@
 
 workspace 프로젝트의 핵심 구현 패턴과 모범 사례 정리
 
+## 📚 문서 구성
+
+**주요 문서:**
+- 이 파일 (`DEVELOPMENT_GUIDE.md`) - 핵심 개발 규칙 및 패턴
+- `trend-video-frontend/기능목록.md` - 모든 기능의 구현 현황 (⭐ 필독!)
+
+**상세 문서 (md 폴더에 위치):**
+
+### 🎯 기능 & 자동화
+- [AUTOMATION_GUIDE.md](./md/AUTOMATION_GUIDE.md) - 자동화 시스템 개요
+- [PRODUCT_CATEGORY_AUTOMATION_SPEC.md](./md/PRODUCT_CATEGORY_AUTOMATION_SPEC.md) - 상품카테고리 자동화 상세 스펙
+- [PRODUCT_AUTOMATION_PROCESS.md](./md/PRODUCT_AUTOMATION_PROCESS.md) - 상품 자동화 프로세스
+- [AUTOMATION_PRODUCT_FLOW.md](./md/AUTOMATION_PRODUCT_FLOW.md) - 자동화 상품 흐름도
+
+### 📋 큐 & 스케줄
+- [QUEUE_SYSTEM_DEVELOPER_GUIDE.md](./md/QUEUE_SYSTEM_DEVELOPER_GUIDE.md) - 큐 시스템 완벽 가이드
+- [QUEUE_FIX_SUMMARY.md](./md/QUEUE_FIX_SUMMARY.md) - 큐 시스템 수정 내역
+
+### 🎬 영상 생성 & 변환
+- [LONGFORM_STORY_GUIDE.md](./md/LONGFORM_STORY_GUIDE.md) - 롱폼 스토리 가이드
+- [SHORTFORM_STORY_GUIDE.md](./md/SHORTFORM_STORY_GUIDE.md) - 쇼트폼 스토리 가이드
+- [SORA2_STORY_GUIDE.md](./md/SORA2_STORY_GUIDE.md) - SORA 2 스토리 생성 가이드
+- [LOG_PATTERN_GUIDE.md](./md/LOG_PATTERN_GUIDE.md) - 로그 패턴 가이드
+
+### 🔧 테스트 & 디버깅
+- [INTEGRATION_TEST_PLAN.md](./md/INTEGRATION_TEST_PLAN.md) - 통합 테스트 계획
+- [INTEGRATION_TEST_SUMMARY.md](./md/INTEGRATION_TEST_SUMMARY.md) - 통합 테스트 요약
+- [ERD_TABLE_TEST_REPORT.md](./md/ERD_TABLE_TEST_REPORT.md) - ERD 및 테이블 테스트 보고서
+
+### 📊 참고 자료
+- [CRITICAL_FEATURES.md](./md/CRITICAL_FEATURES.md) - 필수 기능 목록
+- [PAUSE_LOGIC_SUMMARY.md](./md/PAUSE_LOGIC_SUMMARY.md) - 일시정지 로직 설명
+- [PRODUCT_INFO_FLOW.md](./md/PRODUCT_INFO_FLOW.md) - 상품정보 흐름도
+- [QUICK_START_GUIDE.md](./md/QUICK_START_GUIDE.md) - 빠른 시작 가이드
+- [COMPLETE_AUTO_GUIDE.md](./md/COMPLETE_AUTO_GUIDE.md) - 자동화 완전 가이드
+
+### 🔍 버그 수정 히스토리
+- [AUTOMATION_PIPELINE_FIX.md](./md/AUTOMATION_PIPELINE_FIX.md) - 자동화 파이프라인 수정
+- [LOG_APPEND_FIX_SOLUTION.md](./md/LOG_APPEND_FIX_SOLUTION.md) - 로그 추가 수정 솔루션
+- [LOG_FIX_COMPLETE.md](./md/LOG_FIX_COMPLETE.md) - 로그 수정 완료
+- [DEVELOPMENT_GUIDE.backup.md](./md/DEVELOPMENT_GUIDE.backup.md) - 개발 가이드 백업
+
+---
+
 ## 🌏 기본 규칙
 
 ### AI와의 대화는 한글로 진행
