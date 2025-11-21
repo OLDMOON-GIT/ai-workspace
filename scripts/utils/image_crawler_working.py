@@ -1028,40 +1028,60 @@ def download_images(driver, images, output_folder, scenes):
 
     import requests
     import base64
+    import random
+
     downloaded_count = 0
 
-    # ✅ Whisk는 프롬프트당 2개 이미지 생성
-    # scenes: 4개 → images: 최대 8개 (4 × 2)
-    # 따라서 모든 이미지를 저장해야 함
-    images_per_scene = 2  # Whisk 기본값
-    total_expected_images = len(scenes) * images_per_scene
+    # ✅ Whisk는 프롬프트당 2개 이미지 생성 (정책위반 여부에 따라 1~2개)
+    # 저장 전략:
+    # 1. 둘 다 정상 → 랜덤으로 1개만 저장
+    # 2. 1개만 정책위반 → 정상인 것만 저장
+    # 3. 둘 다 정책위반 → 재시도
+    images_per_scene = 2
 
-    print(f"📊 예상 이미지: {len(scenes)}개 씬 × {images_per_scene}개 = {total_expected_images}개", flush=True)
+    # 이미지를 씬별로 그룹화
+    scene_images = {}  # {scene_idx: [img1, img2]} 또는 {scene_idx: [img1]}
+
     print(f"📊 실제 수집된 이미지: {len(images)}개", flush=True)
+    print(f"📊 처리할 씬: {len(scenes)}개", flush=True)
 
-    for i, img_data in enumerate(images):  # ✅ len(scenes) 제한 제거 - 모든 이미지 저장
-        img_src = img_data['src']
-
-        # ✅ 씬 인덱스와 이미지 번호 계산
+    # 이미지를 씬별로 분류
+    for i, img_data in enumerate(images):
         scene_idx = i // images_per_scene
-        img_in_scene = i % images_per_scene + 1  # 1 또는 2
 
         # 범위 체크
         if scene_idx >= len(scenes):
-            print(f"   ⚠️ 이미지 [{i}]: 씬 범위 초과 (scene_idx={scene_idx}, len(scenes)={len(scenes)})", flush=True)
             break
 
+        if scene_idx not in scene_images:
+            scene_images[scene_idx] = []
+        scene_images[scene_idx].append(img_data)
+
+    print(f"📊 이미지 그룹화 완료: {len(scene_images)}개 씬", flush=True)
+
+    # 각 씬별로 처리
+    for scene_idx in range(len(scenes)):
+        if scene_idx not in scene_images or len(scene_images[scene_idx]) == 0:
+            print(f"   ⚠️ 씬 [{scene_idx}]: 이미지 없음 (재시도 필요)", flush=True)
+            continue
+
+        img_list = scene_images[scene_idx]
         scene = scenes[scene_idx]
         scene_number = scene.get('scene_number') or scene.get('scene_id') or f"scene_{str(scene_idx).zfill(2)}"
-
-        # ✅ scene_number 정제 + 이미지 번호 추가 (프롬프트당 2개 이미지)
         scene_number_clean = str(scene_number).replace('/', '_').replace('\\', '_').replace(':', '_')
-        filename_base = f"{scene_number_clean}_{img_in_scene}" if images_per_scene > 1 else scene_number_clean
 
-        print(f"   [+] [{i+1}/{len(images)}] {filename_base} 다운로드 처리 시작... (src: {img_src[:60]}...)", flush=True)
+        # ✅ 저장 전략:
+        # 2개 이미지: 랜덤으로 1개 선택
+        # 1개 이미지: 그것만 저장 (정책위반으로 1개만 생성된 경우)
+        selected_img = random.choice(img_list) if len(img_list) > 1 else img_list[0]
+        selected_idx = img_list.index(selected_img)
+
+        img_src = selected_img['src']
+        print(f"   [+] [{scene_idx+1}/{len(scenes)}] {scene_number_clean} 다운로드 처리 시작...", flush=True)
+        print(f"       ({len(img_list)}개 중 {selected_idx+1}번 선택, src: {img_src[:60]}...)", flush=True)
 
         try:
-            if img_data.get('isBlob'):
+            if selected_img.get('isBlob'):
                 print("     - Blob URL 감지. JavaScript로 base64 데이터 추출 시도.", flush=True)
                 base64_data = driver.execute_script("""
                     const url = arguments[0];
@@ -1132,18 +1152,19 @@ def download_images(driver, images, output_folder, scenes):
             traceback.print_exc()
 
     # ✅ 다운로드 검증
-    # - 최소: scenes 개수 (정책위반 시 1개씩)
-    # - 최대: scenes × 2 (정책위반 없을 때 2개씩)
-    min_expected = len(scenes)  # 최소: 정책위반으로 1개씩
-    max_expected = len(scenes) * 2  # 최대: 정상이면 2개씩
+    # 목표: 씬당 정확히 1개씩 저장
+    expected_count = len(scenes)
 
     print(f"\n✅ 다운로드 완료: 총 {downloaded_count}개 파일 저장됨", flush=True)
-    print(f"   예상 범위: {min_expected} ~ {max_expected}개", flush=True)
+    print(f"   목표: {expected_count}개, 실제: {downloaded_count}개", flush=True)
 
-    if downloaded_count >= min_expected:
-        print(f"   ✅ 검증 성공 ({downloaded_count}개 저장됨)", flush=True)
+    if downloaded_count == expected_count:
+        print(f"   ✅ 검증 성공 (씬당 1개씩 저장)", flush=True)
+    elif downloaded_count < expected_count:
+        print(f"   ⚠️ 일부 씬에서 저장 실패 ({downloaded_count}/{expected_count}개)", flush=True)
+        print(f"      재시도 필요한 씬: {expected_count - downloaded_count}개", flush=True)
     else:
-        print(f"   ❌ 검증 실패 (최소 {min_expected}개 필요)", flush=True)
+        print(f"   ⚠️ 예상보다 많음 ({downloaded_count}/{expected_count}개)", flush=True)
 
     return downloaded_count
 
@@ -1683,15 +1704,16 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         # === 이미지 다운로드 및 성공 여부 확인 ===
         downloaded_count = download_images(driver, images, output_folder, scenes)
 
-        # ✅ 다운로드 검증 (동적 검증)
-        # Whisk: 정책위반 없으면 2개, 있으면 1개씩 생성
-        min_required = len(scenes)  # 최소: 정책위반으로 1개씩
+        # ✅ 다운로드 검증
+        # 목표: 씬당 1개씩 총 len(scenes)개
+        expected_count = len(scenes)
         if downloaded_count == 0:
             raise Exception(f"❌ 크롤링 실패: 이미지가 0개 다운로드됨")
-        elif downloaded_count < min_required:
-            print(f"\n⚠️ 경고: {downloaded_count}/{min_required}개 이상 필요 (부분 성공)", flush=True)
+        elif downloaded_count < expected_count:
+            print(f"\n⚠️ 경고: {downloaded_count}/{expected_count}개만 저장됨 (부분 성공)", flush=True)
+            print(f"   {expected_count - downloaded_count}개 씬에 대해 재시도가 필요합니다", flush=True)
         else:
-            print(f"\n✅ 검증 성공: {downloaded_count}개 이미지 저장됨 (예상: {min_required}~{len(scenes)*2}개)", flush=True)
+            print(f"\n✅ 검증 성공: {downloaded_count}개 이미지 저장됨 (목표: {expected_count}개)", flush=True)
 
         print(f"\n{'='*80}", flush=True)
         print("🎉 전체 워크플로우 완료!", flush=True)
