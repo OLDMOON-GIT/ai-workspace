@@ -40,12 +40,15 @@ build/
 .crawl_start
 .crawl_progress
 .crawl_complete
+.crawl_failed
 .video_start
 .video_progress
 .video_complete
+.video_failed
 .upload_start
 .upload_progress
 .upload_complete
+.upload_failed
 
 # 캐시
 __pycache__/

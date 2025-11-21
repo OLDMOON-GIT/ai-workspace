@@ -1033,9 +1033,12 @@ def download_images(driver, images, output_folder, scenes):
         img_src = img_data['src']
         scene = scenes[i]
         scene_number = scene.get('scene_number') or scene.get('scene_id') or f"scene_{str(i).zfill(2)}"
-        
-        print(f"   [+] {scene_number} 다운로드 처리 시작... (src: {img_src[:60]}...)", flush=True)
-        
+
+        # ✅ scene_number 정제 (파일명으로 사용 가능하게)
+        scene_number_clean = str(scene_number).replace('/', '_').replace('\\', '_').replace(':', '_')
+
+        print(f"   [+] {scene_number_clean} 다운로드 처리 시작... (src: {img_src[:60]}...)", flush=True)
+
         try:
             if img_data.get('isBlob'):
                 print("     - Blob URL 감지. JavaScript로 base64 데이터 추출 시도.", flush=True)
@@ -1056,29 +1059,47 @@ def download_images(driver, images, output_folder, scenes):
                 if base64_data and base64_data.startswith('data:image'):
                     header, base64_str = base64_data.split(',', 1)
                     ext = '.' + header.split(';')[0].split('/')[-1] if 'image' in header else '.png'
-                    output_path = os.path.join(output_folder, f"{scene_number}{ext}")
-                    
+                    output_path = os.path.join(output_folder, f"{scene_number_clean}{ext}")
+
+                    # ✅ 폴더 존재 확인
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
                     image_bytes = base64.b64decode(base64_str)
                     with open(output_path, 'wb') as f:
                         f.write(image_bytes)
-                    print(f"     ✅ 성공 (blob): {os.path.basename(output_path)}", flush=True)
-                    downloaded_count += 1
+
+                    # ✅ 파일 저장 확인
+                    if os.path.exists(output_path):
+                        file_size = os.path.getsize(output_path)
+                        print(f"     ✅ 성공 (blob): {os.path.basename(output_path)} ({file_size} bytes)", flush=True)
+                        downloaded_count += 1
+                    else:
+                        print(f"     ❌ 파일 저장됨에도 확인 불가: {output_path}", flush=True)
                 else:
                     print(f"     ❌ 실패: blob URL을 base64로 변환하지 못했습니다.", flush=True)
-            
+
             elif img_src.startswith('http'):
                 print("     - HTTP/HTTPS URL 감지. requests로 다운로드 시도.", flush=True)
                 ext = '.jpg'
                 if 'png' in img_src.lower(): ext = '.png'
                 elif 'webp' in img_src.lower(): ext = '.webp'
-                output_path = os.path.join(output_folder, f"{scene_number}{ext}")
+                output_path = os.path.join(output_folder, f"{scene_number_clean}{ext}")
+
+                # ✅ 폴더 존재 확인
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
                 response = requests.get(img_src, timeout=30, headers={'Referer': 'https://labs.google/'})
                 if response.status_code == 200:
                     with open(output_path, 'wb') as f:
                         f.write(response.content)
-                    print(f"     ✅ 성공 (http): {os.path.basename(output_path)}", flush=True)
-                    downloaded_count += 1
+
+                    # ✅ 파일 저장 확인
+                    if os.path.exists(output_path):
+                        file_size = os.path.getsize(output_path)
+                        print(f"     ✅ 성공 (http): {os.path.basename(output_path)} ({file_size} bytes)", flush=True)
+                        downloaded_count += 1
+                    else:
+                        print(f"     ❌ 파일 저장됨에도 확인 불가: {output_path}", flush=True)
                 else:
                     print(f"     ❌ 실패: HTTP 상태 코드 {response.status_code}", flush=True)
             else:
@@ -1354,7 +1375,14 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         else:
             output_folder = os.path.dirname(os.path.abspath(scenes_json_file))
 
-        print(f"📁 출력 폴더: {output_folder}", flush=True)
+        # ✅ 폴더 생성 (없으면 만듦)
+        try:
+            os.makedirs(output_folder, exist_ok=True)
+            print(f"📁 출력 폴더: {output_folder}", flush=True)
+            print(f"✅ 폴더 생성/확인 완료", flush=True)
+        except Exception as e:
+            print(f"❌ 폴더 생성 실패: {e}", flush=True)
+            raise
 
         # Whisk 프롬프트 입력
         print("\n" + "="*80, flush=True)
@@ -1625,7 +1653,14 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         print(f"📋 수집된 이미지 정보 ({len(images)}개):", flush=True)
         print(json.dumps(images, indent=2, ensure_ascii=False), flush=True)
 
-        download_images(driver, images, output_folder, scenes)
+        # === 이미지 다운로드 및 성공 여부 확인 ===
+        downloaded_count = download_images(driver, images, output_folder, scenes)
+
+        # 다운로드 검증
+        if downloaded_count == 0:
+            raise Exception(f"❌ 크롤링 실패: 이미지가 0개 다운로드됨")
+        elif downloaded_count < len(scenes):
+            print(f"\n⚠️ 경고: {downloaded_count}/{len(scenes)}개만 다운로드됨 (부분 성공)", flush=True)
 
         print(f"\n{'='*80}", flush=True)
         print("🎉 전체 워크플로우 완료!", flush=True)
@@ -1641,18 +1676,31 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
 
     finally:
         # === 크롤링 완료 상태 마커 생성 및 진행 마커 제거 ===
+        # 성공 여부: 예외가 발생하지 않았으면 성공
+        crawl_success = 'e' not in locals() or e is None
+
         try:
             if 'output_folder' in locals():
-                # .crawl_complete 마커 생성
-                completion_marker = os.path.join(output_folder, '.crawl_complete')
-                try:
-                    with open(completion_marker, 'w') as f:
-                        f.write(f"Completed at: {datetime.datetime.now().isoformat()}\n")
-                    print(f"✅ 크롤링 완료 상태 마커 생성: {completion_marker}", flush=True)
-                except Exception as e:
-                    print(f"⚠️ 완료 상태 마커 생성 실패: {e}", flush=True)
+                # ✅ 성공한 경우만 .crawl_complete 마커 생성
+                if crawl_success:
+                    completion_marker = os.path.join(output_folder, '.crawl_complete')
+                    try:
+                        with open(completion_marker, 'w') as f:
+                            f.write(f"Completed at: {datetime.datetime.now().isoformat()}\n")
+                        print(f"✅ 크롤링 완료 상태 마커 생성: {completion_marker}", flush=True)
+                    except Exception as e:
+                        print(f"⚠️ 완료 상태 마커 생성 실패: {e}", flush=True)
+                else:
+                    # ❌ 실패한 경우: .crawl_failed 마커 생성 (선택사항)
+                    failed_marker = os.path.join(output_folder, '.crawl_failed')
+                    try:
+                        with open(failed_marker, 'w') as f:
+                            f.write(f"Failed at: {datetime.datetime.now().isoformat()}\n")
+                        print(f"❌ 크롤링 실패 마커 생성: {failed_marker}", flush=True)
+                    except Exception as exc:
+                        print(f"⚠️ 실패 마커 생성 실패: {exc}", flush=True)
 
-                # .crawl_progress 마커 제거
+                # .crawl_progress 마커 제거 (성공/실패 모두 제거)
                 progress_marker = os.path.join(output_folder, '.crawl_progress')
                 try:
                     if os.path.exists(progress_marker):
