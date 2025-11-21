@@ -1037,27 +1037,43 @@ def download_images(driver, images, output_folder, scenes):
     # 1. 둘 다 정상 → 랜덤으로 1개만 저장
     # 2. 1개만 정책위반 → 정상인 것만 저장
     # 3. 둘 다 정책위반 → 재시도
-    images_per_scene = 2
+
+    num_scenes = len(scenes)
+    num_images = len(images)
+
+    print(f"📊 처리할 씬: {num_scenes}개", flush=True)
+    print(f"📊 실제 수집된 이미지: {num_images}개", flush=True)
+
+    # ✅ 동적으로 씬별 이미지 개수 계산
+    # 최대 2개/씬이므로: num_images를 num_scenes로 배분
+    # 예: 8 씬, 16 이미지 → 각 2개씩
+    # 예: 8 씬, 12 이미지 → 일부는 1개, 일부는 2개
+    images_per_scene = max(1, num_images // num_scenes) if num_scenes > 0 else 2
+
+    print(f"📊 예상 씬당 이미지: {images_per_scene}개 (총 {num_images} ÷ {num_scenes} = {images_per_scene})", flush=True)
 
     # 이미지를 씬별로 그룹화
     scene_images = {}  # {scene_idx: [img1, img2]} 또는 {scene_idx: [img1]}
 
-    print(f"📊 실제 수집된 이미지: {len(images)}개", flush=True)
-    print(f"📊 처리할 씬: {len(scenes)}개", flush=True)
-
     # 이미지를 씬별로 분류
     for i, img_data in enumerate(images):
+        # ✅ 동적 계산된 images_per_scene 사용
         scene_idx = i // images_per_scene
 
         # 범위 체크
-        if scene_idx >= len(scenes):
+        if scene_idx >= num_scenes:
             break
 
         if scene_idx not in scene_images:
             scene_images[scene_idx] = []
         scene_images[scene_idx].append(img_data)
 
-    print(f"📊 이미지 그룹화 완료: {len(scene_images)}개 씬", flush=True)
+    print(f"📊 이미지 그룹화 완료: {len(scene_images)}개 씬 처리", flush=True)
+
+    # ✅ 각 씬이 이미지를 가지고 있는지 확인
+    missing_scenes = [i for i in range(num_scenes) if i not in scene_images]
+    if missing_scenes:
+        print(f"⚠️ 이미지 없는 씬: {missing_scenes} (재시도 필요)", flush=True)
 
     # 각 씬별로 처리
     for scene_idx in range(len(scenes)):
