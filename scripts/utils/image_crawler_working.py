@@ -1606,15 +1606,15 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             print("ℹ️ 백업할 기존 파일 없음\n", flush=True)
         
         # 페이지의 모든 이미지 찾기 (blob 포함)
-        # Whisk의 결과 이미지를 정확하게 타겟팅
+        # ✅ Whisk의 결과 이미지를 정확하게 타겟팅 - 모든 이미지 수집 (순서 보존)
         images = driver.execute_script("""
             const imgs = Array.from(document.querySelectorAll('img'));
             console.log('[DEBUG] Total imgs on page:', imgs.length);
 
             // 1단계: 기본 필터링 (크기, URL 타입)
             const basicFiltered = imgs.filter(img => {
-                // 최소 크기 (너무 작은 아이콘/썸네일 제외)
-                if (img.offsetWidth < 100 || img.offsetHeight < 100) return false;
+                // ✅ 최소 크기 기준 완화 (60x60으로 낮춤 - 첫 이미지 놓치지 않기)
+                if (img.offsetWidth < 60 || img.offsetHeight < 60) return false;
 
                 const src = img.src || '';
                 // data: URL 제외
@@ -1627,20 +1627,13 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             });
             console.log('[DEBUG] After basic filter:', basicFiltered.length);
 
-            // 2단계: Whisk 결과 이미지 우선 선택 (크기 순으로 정렬)
-            const sorted = basicFiltered.sort((a, b) => {
-                // 더 큰 이미지를 우선
-                const sizeA = a.offsetWidth * a.offsetHeight;
-                const sizeB = b.offsetWidth * b.offsetHeight;
-                return sizeB - sizeA;
-            });
-
-            console.log('[DEBUG] Sorted by size, top 5:');
-            sorted.slice(0, 5).forEach((img, idx) => {
+            // ✅ 크기 정렬 제거 - 수집 순서 보존 (첫 이미지부터 순서대로)
+            console.log('[DEBUG] Images (in order):');
+            basicFiltered.slice(0, 10).forEach((img, idx) => {
                 console.log(`  [${idx}] ${img.offsetWidth}x${img.offsetHeight} - ${img.src.substring(0, 60)}`);
             });
 
-            return sorted.map(img => ({
+            return basicFiltered.map(img => ({
                 src: img.src,
                 width: img.offsetWidth,
                 height: img.offsetHeight,
