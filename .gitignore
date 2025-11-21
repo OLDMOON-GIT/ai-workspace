@@ -36,6 +36,17 @@ build/
 # 로그
 *.log
 
+# 프로세스 상태 마커
+.crawl_start
+.crawl_progress
+.crawl_complete
+.video_start
+.video_progress
+.video_complete
+.upload_start
+.upload_progress
+.upload_complete
+
 # 캐시
 __pycache__/
 *.pyc

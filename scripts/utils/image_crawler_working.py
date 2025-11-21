@@ -13,6 +13,7 @@ import io
 import os
 import glob
 import argparse
+import datetime
 
 # Windows 인코딩 문제 해결
 if sys.platform == 'win32':
@@ -536,9 +537,16 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
     print("⏳ Whisk 페이지 로딩...", flush=True)
     time.sleep(5)
 
-    # 비율 선택 (16:9 또는 9:16)
+    # ✅ 비율 선택 (16:9 또는 9:16)
+    # 9:16 비율인 경우 "가로 모드(Horizontal)" 버튼 선택
     if aspect_ratio:
         print(f"📐 비율 선택 시도: {aspect_ratio}", flush=True)
+
+        # 9:16일 때는 "가로 모드" 또는 "Horizontal" 선택
+        button_to_click = aspect_ratio
+        if aspect_ratio == '9:16':
+            button_to_click = 'Horizontal'  # 9:16 비율에서 가로 모드 선택
+            print(f"   → 9:16 비율: '가로 모드(Horizontal)' 선택", flush=True)
 
         # Step 1: 비율 선택 드롭다운/버튼 먼저 열기
         menu_open_result = driver.execute_script("""
@@ -576,27 +584,27 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
         else:
             print(f"⚠️ 비율 선택 메뉴를 찾지 못함", flush=True)
 
-        # Step 2: 원하는 비율 옵션 선택
+        # Step 2: 원하는 옵션 선택
         aspect_ratio_result = driver.execute_script("""
-            const targetRatio = arguments[0];
+            const buttonText = arguments[0];  // ✅ aspect_ratio 대신 button_to_click 사용
 
             // button 요소만 찾기 (더 정확함)
             const allButtons = Array.from(document.querySelectorAll('button'));
 
-            // 정확히 targetRatio 텍스트만 가진 버튼 찾기
-            const ratioButtons = allButtons.filter(button => {
+            // 정확히 buttonText 텍스트만 가진 버튼 찾기
+            const targetButtons = allButtons.filter(button => {
                 const text = button.textContent.trim();
-                return text === targetRatio;
+                return text === buttonText;
             });
 
-            // 디버깅: 찾은 모든 비율 버튼 출력
-            console.log('🔍 찾은 비율 버튼들:', ratioButtons.length, '개');
-            const foundTexts = ratioButtons.map(btn => btn.textContent.trim());
+            // 디버깅: 찾은 모든 버튼 출력
+            console.log('🔍 찾은 버튼들:', targetButtons.length, '개');
+            const foundTexts = targetButtons.map(btn => btn.textContent.trim());
             console.log('   텍스트들:', foundTexts);
 
-            if (ratioButtons.length > 0) {
+            if (targetButtons.length > 0) {
                 // 첫 번째 매칭된 버튼 클릭
-                const targetButton = ratioButtons[0];
+                const targetButton = targetButtons[0];
 
                 console.log('🎯 선택된 버튼:', targetButton.tagName, targetButton.textContent.trim());
                 console.log('   클래스:', targetButton.className);
@@ -611,12 +619,12 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
                 };
             }
 
-            // 비율 아이콘을 찾기 (SVG나 이미지로 표시될 수 있음 - 폴백)
+            // 텍스트로 찾기 실패 시 aria-label/title 확인 (폴백)
             for (const button of allButtons) {
                 const ariaLabel = button.getAttribute('aria-label') || '';
                 const title = button.getAttribute('title') || '';
 
-                if (ariaLabel.includes(targetRatio) || title.includes(targetRatio)) {
+                if (ariaLabel.includes(buttonText) || title.includes(buttonText)) {
                     button.click();
                     return {
                         success: true,
@@ -627,7 +635,7 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
             }
 
             return {success: false, totalButtons: allButtons.length};
-        """, aspect_ratio)
+        """, button_to_click)
 
         if aspect_ratio_result.get('success'):
             print(f"✅ 비율 선택 성공: {aspect_ratio}", flush=True)
@@ -1191,9 +1199,16 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             driver.get('https://labs.google/fx/ko/tools/whisk/project')
             time.sleep(3)
 
-            # 비율 선택 (Whisk만 사용할 때)
+            # ✅ 비율 선택 (Whisk만 사용할 때)
+            # 9:16 비율인 경우 "가로 모드(Horizontal)" 버튼 선택
             if aspect_ratio:
                 print(f"📐 비율 선택 시도: {aspect_ratio}", flush=True)
+
+                # 9:16일 때는 "가로 모드" 또는 "Horizontal" 선택
+                button_to_click = aspect_ratio
+                if aspect_ratio == '9:16':
+                    button_to_click = 'Horizontal'  # 9:16 비율에서 가로 모드 선택
+                    print(f"   → 9:16 비율: '가로 모드(Horizontal)' 선택", flush=True)
 
                 # Step 1: 비율 선택 드롭다운/버튼 먼저 열기
                 menu_open_result = driver.execute_script("""
@@ -1231,27 +1246,27 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                 else:
                     print(f"⚠️ 비율 선택 메뉴를 찾지 못함", flush=True)
 
-                # Step 2: 원하는 비율 옵션 선택
+                # Step 2: 원하는 옵션 선택
                 aspect_ratio_result = driver.execute_script("""
-                    const targetRatio = arguments[0];
+                    const buttonText = arguments[0];  // ✅ aspect_ratio 대신 button_to_click 사용
 
                     // button 요소만 찾기 (더 정확함)
                     const allButtons = Array.from(document.querySelectorAll('button'));
 
-                    // 정확히 targetRatio 텍스트만 가진 버튼 찾기
-                    const ratioButtons = allButtons.filter(button => {
+                    // 정확히 buttonText 텍스트만 가진 버튼 찾기
+                    const targetButtons = allButtons.filter(button => {
                         const text = button.textContent.trim();
-                        return text === targetRatio;
+                        return text === buttonText;
                     });
 
-                    // 디버깅: 찾은 모든 비율 버튼 출력
-                    console.log('🔍 찾은 비율 버튼들:', ratioButtons.length, '개');
-                    const foundTexts = ratioButtons.map(btn => btn.textContent.trim());
+                    // 디버깅: 찾은 모든 버튼 출력
+                    console.log('🔍 찾은 버튼들:', targetButtons.length, '개');
+                    const foundTexts = targetButtons.map(btn => btn.textContent.trim());
                     console.log('   텍스트들:', foundTexts);
 
-                    if (ratioButtons.length > 0) {
+                    if (targetButtons.length > 0) {
                         // 첫 번째 매칭된 버튼 클릭
-                        const targetButton = ratioButtons[0];
+                        const targetButton = targetButtons[0];
 
                         console.log('🎯 선택된 버튼:', targetButton.tagName, targetButton.textContent.trim());
                         console.log('   클래스:', targetButton.className);
@@ -1266,12 +1281,12 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                         };
                     }
 
-                    // 비율 아이콘을 찾기 (SVG나 이미지로 표시될 수 있음 - 폴백)
+                    // 텍스트로 찾기 실패 시 aria-label/title 확인 (폴백)
                     for (const button of allButtons) {
                         const ariaLabel = button.getAttribute('aria-label') || '';
                         const title = button.getAttribute('title') || '';
 
-                        if (ariaLabel.includes(targetRatio) || title.includes(targetRatio)) {
+                        if (ariaLabel.includes(buttonText) || title.includes(buttonText)) {
                             button.click();
                             return {
                                 success: true,
@@ -1282,7 +1297,7 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                     }
 
                     return {success: false, totalButtons: allButtons.length};
-                """, aspect_ratio)
+                """, button_to_click)
 
                 if aspect_ratio_result.get('success'):
                     print(f"✅ 비율 선택 성공: {aspect_ratio}", flush=True)
@@ -1333,10 +1348,27 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             except Exception as e:
                 print(f"⚠️ 썸네일 처리 실패: {e}", flush=True)
 
+        # === 출력 폴더 결정 (마커 생성 전에 먼저 정의) ===
+        if output_dir:
+            output_folder = os.path.abspath(output_dir)
+        else:
+            output_folder = os.path.dirname(os.path.abspath(scenes_json_file))
+
+        print(f"📁 출력 폴더: {output_folder}", flush=True)
+
         # Whisk 프롬프트 입력
         print("\n" + "="*80, flush=True)
         print("3️⃣ Whisk - 프롬프트 입력", flush=True)
         print("="*80, flush=True)
+
+        # === 크롤링 진행 상태 마커 생성 ===
+        progress_marker = os.path.join(output_folder, '.crawl_progress')
+        try:
+            with open(progress_marker, 'w') as f:
+                f.write(f"Started at: {datetime.datetime.now().isoformat()}\nScenes: {len(scenes)}\n")
+            print(f"✅ 크롤링 진행 상태 마커 생성: {progress_marker}", flush=True)
+        except Exception as e:
+            print(f"⚠️ 진행 상태 마커 생성 실패: {e}", flush=True)
 
         # 모든 씬을 순차적으로 처리
         for i in range(len(scenes)):
@@ -1506,14 +1538,6 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         except Exception as e:
             print(f"⚠️ 스크린샷 저장 실패: {e}", flush=True)
 
-        # 출력 폴더 결정
-        if output_dir:
-            output_folder = os.path.abspath(output_dir)
-        else:
-            output_folder = os.path.dirname(os.path.abspath(scenes_json_file))
-
-        print(f"📁 출력 폴더: {output_folder}", flush=True)
-
         # 기존 이미지/영상 파일을 backup 폴더로 이동
         backup_folder = os.path.join(output_folder, 'backup')
         backup_files = []
@@ -1616,6 +1640,29 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         return 1
 
     finally:
+        # === 크롤링 완료 상태 마커 생성 및 진행 마커 제거 ===
+        try:
+            if 'output_folder' in locals():
+                # .crawl_complete 마커 생성
+                completion_marker = os.path.join(output_folder, '.crawl_complete')
+                try:
+                    with open(completion_marker, 'w') as f:
+                        f.write(f"Completed at: {datetime.datetime.now().isoformat()}\n")
+                    print(f"✅ 크롤링 완료 상태 마커 생성: {completion_marker}", flush=True)
+                except Exception as e:
+                    print(f"⚠️ 완료 상태 마커 생성 실패: {e}", flush=True)
+
+                # .crawl_progress 마커 제거
+                progress_marker = os.path.join(output_folder, '.crawl_progress')
+                try:
+                    if os.path.exists(progress_marker):
+                        os.remove(progress_marker)
+                        print(f"✅ 크롤링 진행 상태 마커 제거: {progress_marker}", flush=True)
+                except Exception as e:
+                    print(f"⚠️ 진행 상태 마커 제거 실패: {e}", flush=True)
+        except Exception as e:
+            print(f"⚠️ 상태 마커 처리 실패: {e}", flush=True)
+
         # 임시 파일 정리
         try:
             if 'product_thumbnail_path' in locals() and product_thumbnail_path and os.path.exists(product_thumbnail_path):
