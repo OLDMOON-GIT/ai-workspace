@@ -84,20 +84,10 @@ def create_mock_images(count):
         })
     return images
 
-# 테스트 케이스 결정
-if use_whisk:
-    # Whisk에서 수집한 이미지로 테스트 (1번만)
-    test_cases = [
-        {"name": f"Whisk 이미지 ({len(all_images)}개) + 4개 씬", "images": None, "use_whisk": True}
-    ]
-else:
-    # Mock 데이터로 테스트 (다양한 케이스)
-    test_cases = [
-        {"name": "8개 이미지 + 4개 씬", "images": 8},
-        {"name": "7개 이미지 + 4개 씬", "images": 7},
-        {"name": "4개 이미지 + 4개 씬", "images": 4},
-        {"name": "2개 이미지 + 4개 씬", "images": 2},
-    ]
+# 테스트 케이스 결정 (항상 8개 이미지로 테스트하기)
+test_cases = [
+    {"name": "8개 이미지 + 4개 씬 (통합테스트)", "images": 8},
+]
 
 for test_case in test_cases:
     print("\n" + "=" * 80)
@@ -137,6 +127,9 @@ for test_case in test_cases:
     print("\n다운로드 시뮬레이션:")
 
     output_folder = r"C:\Users\oldmoon\workspace\trend-video-backend\input\project_454d477a-186a-4893-a2f4-9575cdfe8daf"
+
+    # 출력 폴더 생성
+    os.makedirs(output_folder, exist_ok=True)
 
     # 기존 파일 정리
     for f in glob.glob(os.path.join(output_folder, "scene_*.jpeg")):
