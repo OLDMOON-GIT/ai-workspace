@@ -26,7 +26,7 @@ const testData = {
   category: '테스트',
   tags: '테스트,자동화',
   channel: 'test-channel',
-  model: 'claude',
+  model: 'gemini',
   mediaMode: 'upload',
   scriptMode: 'chrome'
 };

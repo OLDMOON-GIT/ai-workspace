@@ -40,3 +40,12 @@ build/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Chrome 캐시
+.cache/
+.chrome/
+*.crx
+*.crxdelta
+*.appcache
+chrome_data/
+LargeClipboardApp/

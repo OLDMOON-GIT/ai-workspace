@@ -93,7 +93,7 @@ async function runAllTests() {
       type: 'shortform',
       category: '테스트',
       channel: 'test-channel',
-      model: 'claude',
+      model: 'gemini',
       mediaMode: 'upload',
       scriptMode: 'chrome'
     });

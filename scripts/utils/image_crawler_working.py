@@ -580,37 +580,38 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
         aspect_ratio_result = driver.execute_script("""
             const targetRatio = arguments[0];
 
-            // 16:9 또는 9:16을 포함하는 버튼이나 요소 찾기
-            const allElements = Array.from(document.querySelectorAll('button, div, span, li, [role="option"]'));
+            // button 요소만 찾기 (더 정확함)
+            const allButtons = Array.from(document.querySelectorAll('button'));
 
-            // 정확한 비율 텍스트를 포함하는 요소 찾기
-            const ratioElements = allElements.filter(elem => {
-                const text = elem.textContent || '';
-                return text.includes(targetRatio);
+            // 정확히 targetRatio 텍스트만 가진 버튼 찾기
+            const ratioButtons = allButtons.filter(button => {
+                const text = button.textContent.trim();
+                return text === targetRatio;
             });
 
-            if (ratioElements.length > 0) {
-                // 클릭 가능한 요소 우선 (button이나 클릭 이벤트가 있는 것)
-                const clickableElement = ratioElements.find(elem =>
-                    elem.tagName === 'BUTTON' ||
-                    elem.tagName === 'LI' ||
-                    elem.getAttribute('role') === 'option' ||
-                    elem.onclick ||
-                    window.getComputedStyle(elem).cursor === 'pointer'
-                ) || ratioElements[0];
+            // 디버깅: 찾은 모든 비율 버튼 출력
+            console.log('🔍 찾은 비율 버튼들:', ratioButtons.length, '개');
+            const foundTexts = ratioButtons.map(btn => btn.textContent.trim());
+            console.log('   텍스트들:', foundTexts);
 
-                clickableElement.click();
+            if (ratioButtons.length > 0) {
+                // 첫 번째 매칭된 버튼 클릭
+                const targetButton = ratioButtons[0];
+
+                console.log('🎯 선택된 버튼:', targetButton.tagName, targetButton.textContent.trim());
+                console.log('   클래스:', targetButton.className);
+                targetButton.click();
 
                 return {
                     success: true,
-                    element: clickableElement.tagName,
-                    role: clickableElement.getAttribute('role'),
-                    text: clickableElement.textContent.substring(0, 50)
+                    element: targetButton.tagName,
+                    text: targetButton.textContent.trim(),
+                    className: targetButton.className,
+                    allFoundTexts: foundTexts
                 };
             }
 
-            // 비율 아이콘을 찾기 (SVG나 이미지로 표시될 수 있음)
-            const allButtons = Array.from(document.querySelectorAll('button'));
+            // 비율 아이콘을 찾기 (SVG나 이미지로 표시될 수 있음 - 폴백)
             for (const button of allButtons) {
                 const ariaLabel = button.getAttribute('aria-label') || '';
                 const title = button.getAttribute('title') || '';
@@ -625,7 +626,7 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
                 }
             }
 
-            return {success: false, totalElements: allElements.length};
+            return {success: false, totalButtons: allButtons.length};
         """, aspect_ratio)
 
         if aspect_ratio_result.get('success'):
@@ -1097,17 +1098,25 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         with open(scenes_json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
+        # ✅ JSON 구조 디버깅
+        print(f"📋 JSON 구조: {list(data.keys()) if isinstance(data, dict) else 'list'}", flush=True)
+
         # scenes가 배열이면 그대로, 객체면 scenes 키에서 추출
         if isinstance(data, list):
             scenes = data
             aspect_ratio = None  # 배열 형식에는 metadata 없음
             product_thumbnail = None  # 배열 형식에는 product_info 없음
+            print(f"⚠️ JSON이 배열 형식 (metadata 없음, 기본값 사용)", flush=True)
         elif isinstance(data, dict) and 'scenes' in data:
             scenes = data['scenes']
             # metadata에서 aspect_ratio 추출
             metadata = data.get('metadata', {})
             aspect_ratio = metadata.get('aspect_ratio')
             format_type = metadata.get('format')
+
+            # ✅ 디버깅: metadata 확인
+            print(f"📦 Metadata: {metadata}", flush=True)
+            print(f"   format: {format_type}, aspect_ratio: {aspect_ratio}", flush=True)
 
             # product_info에서 썸네일 추출 (상품 영상인 경우)
             product_info = data.get('product_info', {})
@@ -1125,7 +1134,7 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                 elif format_type in ['shortform', 'product', 'sora2']:
                     aspect_ratio = '9:16'
 
-            print(f"📐 비디오 형식: {format_type or 'unknown'}, 비율: {aspect_ratio or 'default'}", flush=True)
+            print(f"✅ 비디오 형식: {format_type or 'unknown'} → 비율: {aspect_ratio or 'default'}", flush=True)
             if product_thumbnail:
                 print(f"🛒 상품 썸네일: {product_thumbnail[:80]}...", flush=True)
         else:
@@ -1226,37 +1235,38 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                 aspect_ratio_result = driver.execute_script("""
                     const targetRatio = arguments[0];
 
-                    // 16:9 또는 9:16을 포함하는 버튼이나 요소 찾기
-                    const allElements = Array.from(document.querySelectorAll('button, div, span, li, [role="option"]'));
+                    // button 요소만 찾기 (더 정확함)
+                    const allButtons = Array.from(document.querySelectorAll('button'));
 
-                    // 정확한 비율 텍스트를 포함하는 요소 찾기
-                    const ratioElements = allElements.filter(elem => {
-                        const text = elem.textContent || '';
-                        return text.includes(targetRatio);
+                    // 정확히 targetRatio 텍스트만 가진 버튼 찾기
+                    const ratioButtons = allButtons.filter(button => {
+                        const text = button.textContent.trim();
+                        return text === targetRatio;
                     });
 
-                    if (ratioElements.length > 0) {
-                        // 클릭 가능한 요소 우선 (button이나 클릭 이벤트가 있는 것)
-                        const clickableElement = ratioElements.find(elem =>
-                            elem.tagName === 'BUTTON' ||
-                            elem.tagName === 'LI' ||
-                            elem.getAttribute('role') === 'option' ||
-                            elem.onclick ||
-                            window.getComputedStyle(elem).cursor === 'pointer'
-                        ) || ratioElements[0];
+                    // 디버깅: 찾은 모든 비율 버튼 출력
+                    console.log('🔍 찾은 비율 버튼들:', ratioButtons.length, '개');
+                    const foundTexts = ratioButtons.map(btn => btn.textContent.trim());
+                    console.log('   텍스트들:', foundTexts);
 
-                        clickableElement.click();
+                    if (ratioButtons.length > 0) {
+                        // 첫 번째 매칭된 버튼 클릭
+                        const targetButton = ratioButtons[0];
+
+                        console.log('🎯 선택된 버튼:', targetButton.tagName, targetButton.textContent.trim());
+                        console.log('   클래스:', targetButton.className);
+                        targetButton.click();
 
                         return {
                             success: true,
-                            element: clickableElement.tagName,
-                            role: clickableElement.getAttribute('role'),
-                            text: clickableElement.textContent.substring(0, 50)
+                            element: targetButton.tagName,
+                            text: targetButton.textContent.trim(),
+                            className: targetButton.className,
+                            allFoundTexts: foundTexts
                         };
                     }
 
-                    // 비율 아이콘을 찾기 (SVG나 이미지로 표시될 수 있음)
-                    const allButtons = Array.from(document.querySelectorAll('button'));
+                    // 비율 아이콘을 찾기 (SVG나 이미지로 표시될 수 있음 - 폴백)
                     for (const button of allButtons) {
                         const ariaLabel = button.getAttribute('aria-label') || '';
                         const title = button.getAttribute('title') || '';
@@ -1271,7 +1281,7 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                         }
                     }
 
-                    return {success: false, totalElements: allElements.length};
+                    return {success: false, totalButtons: allButtons.length};
                 """, aspect_ratio)
 
                 if aspect_ratio_result.get('success'):
@@ -1396,8 +1406,8 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         print("🕐 이미지 생성 대기", flush=True)
         print("="*80, flush=True)
 
-        # 씬 개수에 비례한 타임아웃 설정 (씬당 30초)
-        max_wait_time = len(scenes) * 30
+        # 씬 개수에 비례한 타임아웃 설정 (씬당 90초 - Whisk는 생성이 느림)
+        max_wait_time = max(120, len(scenes) * 90)  # 최소 120초
         print(f"⏳ 이미지 생성 중... (최대 {max_wait_time}초, 씬 {len(scenes)}개)", flush=True)
 
         # 디버그: 초기 페이지 상태 확인
@@ -1425,36 +1435,60 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             result = driver.execute_script("""
                 const text = document.body.innerText;
                 const imgs = Array.from(document.querySelectorAll('img'));
-                const largeImgs = imgs.filter(img => img.offsetWidth > 100 && img.offsetHeight > 100);
+
+                // Whisk 결과 이미지 필터링: blob URL이면서 충분히 큰 이미지
+                const whiskImgs = imgs.filter(img => {
+                    const src = img.src || '';
+                    // blob URL 또는 http URL
+                    if (!src.startsWith('blob:') && !src.startsWith('http')) return false;
+                    // data URL 제외
+                    if (src.startsWith('data:')) return false;
+                    // 충분히 큰 이미지 (natural 크기 또는 offset 크기)
+                    const hasSize = (img.naturalWidth > 100 && img.naturalHeight > 100) ||
+                                   (img.offsetWidth > 100 && img.offsetHeight > 100);
+                    return hasSize;
+                });
+
                 const allImgs = imgs.map(img => ({
                     src: img.src.substring(0, 50),
                     width: img.offsetWidth,
-                    height: img.offsetHeight
+                    height: img.offsetHeight,
+                    naturalWidth: img.naturalWidth,
+                    naturalHeight: img.naturalHeight
                 }));
+
                 return {
-                    generating: text.includes('Generating') || text.includes('생성 중') || text.includes('Loading'),
-                    imageCount: largeImgs.length,
+                    generating: text.includes('Generating') || text.includes('생성 중') || text.includes('Loading') || text.includes('처리'),
+                    imageCount: whiskImgs.length,
                     allImagesCount: imgs.length,
-                    sampleImages: allImgs.slice(0, 3)
+                    sampleImages: allImgs.slice(0, 5)
                 };
             """)
 
             # 모든 씬의 이미지가 생성될 때까지 대기
+            # Whisk는 씬당 여러 배리에이션을 생성할 수 있으므로, 최소 씬 개수만큼만 확인
             expected_count = len(scenes)
-            if not result['generating'] and result['imageCount'] >= expected_count:
-                print(f"✅ 생성 완료! ({i+1}초) - 이미지 {result['imageCount']}/{expected_count}개 발견", flush=True)
-                break
+            if result['imageCount'] >= expected_count:
+                # Generating 상태가 아니면 완료
+                if not result['generating']:
+                    print(f"✅ 생성 완료! ({i+1}초) - 이미지 {result['imageCount']}/{expected_count}개 발견", flush=True)
+                    break
+                else:
+                    # 이미지는 있지만 아직 생성 중
+                    if i % 20 == 0 and i > 0:
+                        print(f"   생성 진행 중... ({i}초) - 이미지 {result['imageCount']}개 발견, 추가 생성 대기 중", flush=True)
             elif i >= max_wait_time - 1:
                 # 타임아웃 (현재까지 생성된 만큼만 사용)
                 print(f"⚠️ 타임아웃 ({i+1}초/{max_wait_time}초) - 이미지 {result['imageCount']}/{expected_count}개 발견", flush=True)
                 if result['imageCount'] < expected_count:
                     print(f"⚠️ 경고: {expected_count - result['imageCount']}개 이미지가 생성되지 않았습니다!", flush=True)
+                    print(f"   샘플 이미지 (최대 5개): {result['sampleImages']}", flush=True)
                 break
 
-            if i % 10 == 0 and i > 0:
-                print(f"   대기 중... ({i}초) - 큰 이미지: {result['imageCount']}개, 전체: {result['allImagesCount']}개", flush=True)
-                if i == 10 and result['allImagesCount'] > 0:
-                    print(f"   샘플 이미지: {result['sampleImages']}", flush=True)
+            if i % 15 == 0 and i > 0:
+                print(f"   대기 중... ({i}초) - Whisk 이미지: {result['imageCount']}개, 전체: {result['allImagesCount']}개", flush=True)
+                if i == 15:
+                    print(f"   샘플 (최대 5개): {result['sampleImages']}", flush=True)
             time.sleep(1)
 
         time.sleep(5)
