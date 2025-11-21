@@ -26,6 +26,18 @@ workspace 프로젝트의 핵심 구현 패턴과 모범 사례 정리
 - [SORA2_STORY_GUIDE.md](./md/SORA2_STORY_GUIDE.md) - SORA 2 스토리 생성 가이드
 - [LOG_PATTERN_GUIDE.md](./md/LOG_PATTERN_GUIDE.md) - 로그 패턴 가이드
 
+### 🎨 이미지 생성 (Whisk)
+**필독**:
+- [WHISK_IMAGE_CRAWLER_SPEC.md](./md/WHISK_IMAGE_CRAWLER_SPEC.md) - **Whisk 이미지 크롤러 스펙** ⭐
+- [README_IMPORTANT_WHISK.md](./md/README_IMPORTANT_WHISK.md) - Whisk 최우선 읽기
+
+**상세**:
+- [WHISK_FEATURE_LIST.md](./md/WHISK_FEATURE_LIST.md) - 전체 기능 목록 & 구현 상태
+- [WHISK_IMAGE_DOWNLOAD_LOGIC_FIX.md](./md/WHISK_IMAGE_DOWNLOAD_LOGIC_FIX.md) - 수정 내용 분석
+- [WHISK_CHANGES_SUMMARY.md](./md/WHISK_CHANGES_SUMMARY.md) - 변경 전후 비교
+- [WHISK_EXACT_CHANGES.md](./md/WHISK_EXACT_CHANGES.md) - 정확한 코드 라인
+- [WHISK_TESTING_CHECKLIST.md](./md/WHISK_TESTING_CHECKLIST.md) - 검증 방법
+
 ### 🔧 테스트 & 디버깅
 - [INTEGRATION_TEST_PLAN.md](./md/INTEGRATION_TEST_PLAN.md) - 통합 테스트 계획
 - [INTEGRATION_TEST_SUMMARY.md](./md/INTEGRATION_TEST_SUMMARY.md) - 통합 테스트 요약
