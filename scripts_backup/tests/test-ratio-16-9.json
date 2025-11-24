@@ -1,0 +1,24 @@
+{
+  "title": "[테스트] 16:9 비율 테스트",
+  "version": "product-1.0",
+  "product_info": {
+    "thumbnail": "https://image3.coupangcdn.com/image/vendor_inventory/2598/8ef64a1d8074ae77fb85038433e9c511df7863ccaa3ebf079fbe85c9c5b0.png",
+    "product_link": "https://link.coupang.com/a/c6eAXn",
+    "description": "16:9 비율 테스트"
+  },
+  "metadata": {
+    "genre": "상품 소개 영상",
+    "format": "product",
+    "total_duration_seconds": 30,
+    "aspect_ratio": "16:9"
+  },
+  "scenes": [
+    {
+      "scene_id": "scene_00_hook",
+      "scene_name": "훅 - 3초 상품 매력",
+      "duration_seconds": 3,
+      "sora_prompt": "Horizontal 16:9 format, landscape orientation, cinematic product shot, cozy winter slippers on wooden floor, warm lighting, soft focus",
+      "narration": "16:9 비율 테스트입니다."
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "format": "shortform",
+    "aspect_ratio": "9:16"
+  },
+  "scenes": [
+    {
+      "scene_number": 1,
+      "scene_id": "scene_01",
+      "image_prompt": "A modern smartphone on a clean white desk, professional product photography style, bright natural lighting"
+    },
+    {
+      "scene_number": 2,
+      "scene_id": "scene_02",
+      "image_prompt": "Close-up of smartphone screen showing colorful app icons, vibrant and modern design"
+    }
+  ]
+}

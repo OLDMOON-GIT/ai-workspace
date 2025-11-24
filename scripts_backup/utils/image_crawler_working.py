@@ -1,0 +1,2208 @@
+# -*- coding: utf-8 -*-
+print("--- SCRIPT EXECUTION STARTED ---", flush=True)
+"""
+이미지 크롤링 자동화 스크립트
+Whisk 또는 ImageFX + Whisk 조합으로 이미지를 생성합니다.
+"""
+
+import sys
+import time
+import json
+import pyperclip
+import io
+import os
+import glob
+import argparse
+import datetime
+import shutil
+
+# Windows 인코딩 문제 해결
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True, write_through=True)
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', line_buffering=True, write_through=True)
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
+import re
+
+# stdout을 파일과 콘솔에 동시 출력하는 Tee 클래스
+class Tee:
+    """stdout/stderr를 파일과 콘솔에 동시에 출력"""
+    def __init__(self, original_stream, log_file):
+        self.original_stream = original_stream
+        self.log_file = log_file
+
+    def write(self, data):
+        self.original_stream.write(data)
+        self.original_stream.flush()
+        if self.log_file:
+            try:
+                self.log_file.write(data)
+                self.log_file.flush()
+            except:
+                pass
+
+    def flush(self):
+        self.original_stream.flush()
+        if self.log_file:
+            try:
+                self.log_file.flush()
+            except:
+                pass
+
+def setup_logging(output_folder):
+    """로그 파일 설정 - stdout/stderr를 파일에도 기록"""
+    if not output_folder:
+        return None
+
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_path = os.path.join(output_folder, f'image_crawl_{timestamp}.log')
+        log_file = open(log_path, 'w', encoding='utf-8')
+
+        # 헤더 작성
+        header = f"""{'='*80}
+📋 이미지 크롤링 로그
+{'='*80}
+시작 시간: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+출력 폴더: {output_folder}
+로그 파일: {log_path}
+{'='*80}
+
+"""
+        log_file.write(header)
+        log_file.flush()
+        print(f"📋 로그 파일 생성: {log_path}", flush=True)
+
+        # stdout과 stderr를 Tee로 리다이렉트
+        sys.stdout = Tee(sys.stdout, log_file)
+        sys.stderr = Tee(sys.stderr, log_file)
+
+        return log_file
+    except Exception as e:
+        print(f"⚠️ 로그 파일 생성 실패: {e}", flush=True)
+        return None
+
+def sanitize_prompt_for_google(prompt):
+    """
+    Google 이미지 정책 위반을 방지하기 위해 프롬프트를 안전하게 변환합니다.
+
+    Google/Whisk/ImageFX 정책에서 금지하는 내용:
+    - 폭력, 성인 콘텐츠, 혐오 발언
+    - 실제 인물, 브랜드, 로고
+    - 위험한 활동
+    - 저작권 침해
+    - 특정 인종/민족 반복 강조
+    """
+    if not prompt or not isinstance(prompt, str):
+        return prompt
+
+    # 문제가 될 수 있는 패턴 제거
+    import re
+
+    # 특정 인종/민족 관련 표현 중립화
+    prompt = re.sub(r'\bSAME KOREAN PERSON\b', 'same person', prompt, flags=re.IGNORECASE)
+    prompt = re.sub(r'\bKorean person\b', 'person', prompt, flags=re.IGNORECASE)
+    prompt = re.sub(r'\bKorean character\b', 'character', prompt, flags=re.IGNORECASE)
+    prompt = re.sub(r'\bEast Asian features?\b', 'features', prompt, flags=re.IGNORECASE)
+    prompt = re.sub(r'\bEast Asian facial features?\b', 'facial features', prompt, flags=re.IGNORECASE)
+    prompt = re.sub(r'\bEast Asian appearance\b', 'appearance', prompt, flags=re.IGNORECASE)
+    prompt = re.sub(r'\bAsian\b', '', prompt, flags=re.IGNORECASE)
+    prompt = re.sub(r'\bKorean\b', '', prompt, flags=re.IGNORECASE)
+
+    # 반복적인 "same" 제거 (한 번만 남김)
+    prompt = re.sub(r'(\bsame\b\s+){2,}', 'same ', prompt, flags=re.IGNORECASE)
+
+    # 안전 프리픽스 추가
+    safe_prefix = "safe for work, G-rated, family-friendly, professional quality, "
+
+    # 금지된 키워드 필터링 (대소문자 구분 없음)
+    blocked_keywords = [
+        # 브랜드/로고
+        r'\b(nike|adidas|apple|samsung|sony|disney|marvel|coca-cola|pepsi|mcdonald|starbucks|amazon|google|microsoft)\b',
+        # 실제 인물
+        r'\b(celebrity|famous\s+person|politician|president|actor|actress|singer|athlete)\b',
+        # 폭력적 표현
+        r'\b(blood|gore|weapon|gun|knife|fight|combat|violence|war|explosion)\b',
+        # 성인/선정적 표현
+        r'\b(sexy|nude|naked|intimate|romantic|bedroom|bathroom)\b',
+        # 위험한 활동
+        r'\b(drunk|alcohol|smoking|drug|dangerous|reckless)\b',
+    ]
+
+    sanitized = prompt
+    for pattern in blocked_keywords:
+        sanitized = re.sub(pattern, '[content]', sanitized, flags=re.IGNORECASE)
+
+    # 특정 유해 단어 제거
+    harmful_words = {
+        'violent': 'dynamic',
+        'aggressive': 'energetic',
+        'sexy': 'elegant',
+        'hot': 'warm',
+        'kill': 'stop',
+        'destroy': 'change',
+        'attack': 'approach',
+        'fight': 'interact',
+        'blood': 'red liquid',
+    }
+
+    for harmful, safe in harmful_words.items():
+        sanitized = re.sub(rf'\b{harmful}\b', safe, sanitized, flags=re.IGNORECASE)
+
+    # 브랜드/로고 멘션 제거
+    # "Nike shoes" -> "athletic shoes", "iPhone" -> "smartphone"
+    brand_replacements = {
+        r'nike\s+': 'athletic ',
+        r'adidas\s+': 'sports ',
+        r'iphone': 'smartphone',
+        r'samsung\s+galaxy': 'modern smartphone',
+        r'macbook': 'laptop computer',
+        r'coca-cola': 'soft drink',
+        r'pepsi': 'carbonated beverage',
+    }
+
+    for brand_pattern, generic in brand_replacements.items():
+        sanitized = re.sub(brand_pattern, generic, sanitized, flags=re.IGNORECASE)
+
+    # 최종 프롬프트 구성
+    # 이미 안전 프리픽스가 있으면 추가하지 않음
+    if not any(keyword in sanitized.lower() for keyword in ['safe', 'g-rated', 'family-friendly']):
+        sanitized = safe_prefix + sanitized
+
+    # 길이 제한 (너무 길면 잘림)
+    max_length = 500
+    if len(sanitized) > max_length:
+        sanitized = sanitized[:max_length] + '...'
+
+    # 변경사항이 있으면 로그 출력
+    if sanitized != prompt:
+        print(f"🔒 프롬프트 안전화 적용됨", flush=True)
+        print(f"   원본: {prompt[:80]}{'...' if len(prompt) > 80 else ''}", flush=True)
+        print(f"   안전: {sanitized[:80]}{'...' if len(sanitized) > 80 else ''}", flush=True)
+
+    return sanitized
+
+def setup_chrome_driver():
+    """Chrome 드라이버 설정 - 실행 중인 Chrome에 연결"""
+    import subprocess
+    import requests
+
+    service = Service(ChromeDriverManager().install())
+
+    # 테스트용 별도 포트 (기존 Chrome과 분리)
+    DEBUG_PORT = 9333
+
+    # 1단계: 기존 Chrome이 실행 중인지 확인
+    print(f"🔍 실행 중인 Chrome 찾는 중 (포트: {DEBUG_PORT})...", flush=True)
+
+    try:
+        # Chrome이 9222 포트에서 실행 중인지 확인
+        response = requests.get(f"http://127.0.0.1:{DEBUG_PORT}/json/version", timeout=2)
+        if response.status_code == 200:
+            print(f"✅ 실행 중인 Chrome 발견! (포트 {DEBUG_PORT})", flush=True)
+
+            chrome_options = Options()
+            chrome_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{DEBUG_PORT}")
+
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            print("✅ 기존 Chrome에 연결 완료 (로그인 세션 유지)", flush=True)
+
+            # 자동화 감지 우회
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            return driver
+
+    except (requests.exceptions.RequestException, Exception):
+        pass
+
+    # 2단계: Chrome이 디버깅 모드로 실행되지 않음 → 자동으로 시작
+    print("⚠️ Chrome이 디버깅 모드로 실행되지 않았습니다.", flush=True)
+    print(f"🚀 Chrome을 디버깅 모드로 자동 실행합니다... (포트: {DEBUG_PORT})", flush=True)
+
+    # Chrome 실행 경로 찾기
+    chrome_paths = [
+        r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        os.path.expanduser(r"~\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe")
+    ]
+
+    chrome_exe = None
+    for path in chrome_paths:
+        if os.path.exists(path):
+            chrome_exe = path
+            break
+
+    if not chrome_exe:
+        raise Exception("❌ Chrome 실행 파일을 찾을 수 없습니다.")
+
+    # 기존 Chrome 프로필 복사본 사용 (로그인 세션 유지)
+    import tempfile
+    import shutil
+
+    # 원본 Chrome 프로필 경로
+    original_profile = os.path.expanduser(r"~\AppData\Local\Google\Chrome\User Data")
+    profile_dir = os.path.join(tempfile.gettempdir(), f'chrome_test_profile_{DEBUG_PORT}')
+
+    # 프로필이 없으면 기존 프로필에서 쿠키만 복사
+    if not os.path.exists(profile_dir):
+        print(f"📁 테스트용 프로필 생성 중...", flush=True)
+        os.makedirs(profile_dir, exist_ok=True)
+        # Default 폴더의 쿠키와 로그인 정보 복사
+        try:
+            src_default = os.path.join(original_profile, "Default")
+            dst_default = os.path.join(profile_dir, "Default")
+            if os.path.exists(src_default):
+                shutil.copytree(src_default, dst_default,
+                              ignore=shutil.ignore_patterns('Cache', 'Code Cache', 'GPUCache', 'Service Worker', 'blob_storage'),
+                              dirs_exist_ok=True)
+                print(f"✅ 로그인 세션 복사 완료", flush=True)
+        except Exception as e:
+            print(f"⚠️ 프로필 복사 실패: {e}", flush=True)
+
+    # Chrome을 디버깅 모드로 실행 (별도 포트)
+    subprocess.Popen([
+        chrome_exe,
+        f"--remote-debugging-port={DEBUG_PORT}",
+        f"--user-data-dir={profile_dir}"
+    ])
+
+    print("⏳ Chrome 시작 대기 중...", flush=True)
+    time.sleep(8)  # Chrome이 완전히 시작될 때까지 대기
+
+    # Chrome이 실제로 DEBUG_PORT에서 응답할 때까지 재시도
+    max_retries = 10
+    for i in range(max_retries):
+        try:
+            import requests
+            response = requests.get(f"http://127.0.0.1:{DEBUG_PORT}/json/version", timeout=1)
+            if response.status_code == 200:
+                print(f"✅ Chrome 디버깅 포트({DEBUG_PORT}) 응답 확인!", flush=True)
+                break
+        except:
+            pass
+
+        if i < max_retries - 1:
+            print(f"⏳ 재시도 {i+1}/{max_retries}...", flush=True)
+            time.sleep(2)
+        else:
+            raise Exception(f"❌ Chrome 디버깅 포트({DEBUG_PORT}) 연결 실패")
+
+    # 다시 연결 시도
+    chrome_options = Options()
+    chrome_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{DEBUG_PORT}")
+
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    print(f"✅ 테스트용 Chrome 연결 완료! (포트: {DEBUG_PORT})", flush=True)
+
+    # 자동화 감지 우회
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+    return driver
+
+def generate_image_with_imagefx(driver, prompt):
+    """ImageFX로 이미지 생성 및 다운로드"""
+    print("\n" + "="*80, flush=True)
+    print("1️⃣ ImageFX - 첫 이미지 생성", flush=True)
+    print("="*80, flush=True)
+    print(f"📝 프롬프트 길이: {len(prompt)}자", flush=True)
+    print(f"📝 프롬프트 내용: {prompt}", flush=True)
+    print("="*80, flush=True)
+
+    # 창 크기 최대화 (입력창이 보이도록)
+    try:
+        driver.maximize_window()
+        print("📐 창 크기 최대화 완료", flush=True)
+    except:
+        driver.set_window_size(1920, 1080)
+        print("📐 창 크기 1920x1080 설정", flush=True)
+
+    driver.get('https://labs.google/fx/ko/tools/image-fx')
+    print("⏳ ImageFX 페이지 로딩...", flush=True)
+
+    # 페이지 완전 로드 대기 (네트워크 안정화 포함)
+    for i in range(30):
+        if driver.execute_script("return document.readyState") == "complete":
+            print(f"✅ 로드 완료 ({i+1}초)", flush=True)
+            break
+        time.sleep(1)
+
+    # 추가 대기: JavaScript 초기화 완료 대기
+    print("⏳ Slate 에디터 초기화 대기...", flush=True)
+    time.sleep(5)
+
+    # 네트워크 안정화 대기 (이미지 로딩 등)
+    driver.execute_script("""
+        return new Promise((resolve) => {
+            if (document.readyState === 'complete') {
+                setTimeout(resolve, 2000);
+            } else {
+                window.addEventListener('load', () => setTimeout(resolve, 2000));
+            }
+        });
+    """)
+    print("✅ 페이지 완전 초기화 완료", flush=True)
+
+    # 디버그: 페이지 상태 상세 확인
+    page_info = driver.execute_script("""
+        const editables = Array.from(document.querySelectorAll('[contenteditable]'));
+        return {
+            url: window.location.href,
+            title: document.title,
+            bodyText: document.body.innerText.substring(0, 200),
+            hasContentEditableTrue: !!document.querySelector('[contenteditable="true"]'),
+            hasTextarea: !!document.querySelector('textarea'),
+            editablesCount: editables.length,
+            editables: editables.map(e => ({
+                tag: e.tagName,
+                attr: e.getAttribute('contenteditable'),
+                visible: e.offsetParent !== null,
+                classes: e.className
+            }))
+        };
+    """)
+    print(f"📋 ImageFX 상세 정보:", flush=True)
+    print(f"   URL: {page_info['url']}", flush=True)
+    print(f"   제목: {page_info['title']}", flush=True)
+    print(f"   contenteditable='true': {page_info['hasContentEditableTrue']}", flush=True)
+    print(f"   편집 가능 요소 수: {page_info['editablesCount']}", flush=True)
+    if page_info['editablesCount'] > 0:
+        print(f"   편집 가능 요소들:", flush=True)
+        for idx, elem in enumerate(page_info['editables'][:3]):
+            print(f"      [{idx+1}] {elem}", flush=True)
+
+    # 스크린샷 저장
+    try:
+        import tempfile
+        screenshot_path = os.path.join(tempfile.gettempdir(), 'imagefx_debug.png')
+        driver.save_screenshot(screenshot_path)
+        print(f"📸 스크린샷: {screenshot_path}", flush=True)
+    except:
+        pass
+
+    # 페이지 중앙 클릭하여 입력창 활성화 시도
+    print("🖱️ 입력창 찾아서 활성화 시도...", flush=True)
+
+    # 먼저 "입력" 탭 클릭 (설정 탭이 열려있을 수 있음)
+    driver.execute_script("""
+        const tabs = document.querySelectorAll('button, [role="tab"]');
+        for (const tab of tabs) {
+            const text = (tab.innerText || '').trim();
+            if (text === '입력' || text === 'Input') {
+                tab.click();
+                console.log('Clicked 입력 tab');
+                break;
+            }
+        }
+    """)
+    time.sleep(1)
+
+    # 입력창(contenteditable div) 찾아서 클릭 및 포커스
+    input_focused = driver.execute_script("""
+        // contenteditable 요소 찾기
+        const editables = document.querySelectorAll('[contenteditable="true"]');
+        let targetInput = null;
+
+        for (const el of editables) {
+            // 보이는 요소만 선택
+            if (el.offsetParent !== null && el.offsetWidth > 100) {
+                targetInput = el;
+                break;
+            }
+        }
+
+        if (targetInput) {
+            // 포커스 및 전체 선택
+            targetInput.focus();
+            targetInput.click();
+
+            // 전체 선택 (기존 내용 대체용)
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(targetInput);
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            return {success: true, tag: targetInput.tagName, classes: targetInput.className, hadContent: targetInput.innerText.length > 0};
+        }
+
+        // fallback: 일반 텍스트 입력창
+        const textareas = document.querySelectorAll('textarea, input[type="text"]');
+        for (const el of textareas) {
+            if (el.offsetParent !== null) {
+                el.focus();
+                el.select();
+                return {success: true, tag: el.tagName, type: 'fallback'};
+            }
+        }
+
+        return {success: false};
+    """)
+
+    if input_focused and input_focused.get('success'):
+        print(f"✅ 입력창 포커스 완료: {input_focused}", flush=True)
+    else:
+        print("⚠️ 입력창을 찾지 못했습니다. 클릭으로 대체...", flush=True)
+        driver.execute_script("document.body.click();")
+
+    time.sleep(1)
+
+    # 클립보드를 이용한 직접 입력 시도
+    try:
+        print("📋 프롬프트를 클립보드에 복사하고 붙여넣기 시도...", flush=True)
+        pyperclip.copy(prompt)
+        time.sleep(0.5)
+
+        # Ctrl+V 붙여넣기
+        actions = ActionChains(driver)
+        actions.key_down(Keys.CONTROL).send_keys('v').key_up(Keys.CONTROL).perform()
+        time.sleep(1)
+        print("✅ Ctrl+V 붙여넣기 완료", flush=True)
+
+        # 붙여넣기 확인
+        paste_check = driver.execute_script("""
+            const editables = document.querySelectorAll('[contenteditable="true"]');
+            for (const el of editables) {
+                if (el.offsetParent !== null && el.innerText && el.innerText.length > 50) {
+                    return {success: true, length: el.innerText.length, preview: el.innerText.substring(0, 100)};
+                }
+            }
+            return {success: false};
+        """)
+
+        if paste_check and paste_check.get('success'):
+            print(f"✅ 프롬프트 입력 확인: {paste_check.get('length')}자", flush=True)
+        else:
+            print("⚠️ 프롬프트가 입력창에 들어가지 않았습니다. 직접 입력 시도...", flush=True)
+            # JavaScript로 직접 입력
+            driver.execute_script("""
+                const editables = document.querySelectorAll('[contenteditable="true"]');
+                for (const el of editables) {
+                    if (el.offsetParent !== null && el.offsetWidth > 100) {
+                        el.focus();
+                        el.innerText = arguments[0];
+                        // input 이벤트 발생
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        break;
+                    }
+                }
+            """, prompt)
+            time.sleep(0.5)
+            print("✅ JavaScript 직접 입력 완료", flush=True)
+
+        # 엔터 키 입력하여 생성 시작
+        actions = ActionChains(driver)
+        actions.send_keys(Keys.RETURN).perform()
+        print("⏎ 엔터 입력 완료", flush=True)
+        
+        time.sleep(1)
+
+        # 생성 버튼 찾아서 클릭 (추가된 안정성 로직)
+        print("🔍 생성 버튼 찾는 중...", flush=True)
+        generate_clicked = driver.execute_script("""
+            // 1. 텍스트로 버튼 찾기
+            const buttonTexts = ['Generate', 'Create', '생성', 'make', 'Go', '만들기', 'Remix'];
+            for (const text of buttonTexts) {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                for (const btn of buttons) {
+                    const btnText = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+                    if (btnText === text.toLowerCase()) {
+                        if (btn.offsetParent !== null && !btn.disabled) {
+                            console.log('Found button by text:', btn);
+                            btn.click();
+                            return {success: true, method: 'by-text-' + text};
+                        }
+                    }
+                }
+            }
+
+            // 2. 보라색/파란색 버튼 찾기 (아이콘만 있는 생성 버튼)
+            const allButtons = document.querySelectorAll('button');
+            for (const btn of allButtons) {
+                if (btn.offsetParent === null || btn.disabled) continue;
+
+                const style = window.getComputedStyle(btn);
+                const bgColor = style.backgroundColor;
+
+                // 보라색/파란색 계열 버튼 (ImageFX 생성 버튼)
+                if (bgColor.includes('rgb(103') || bgColor.includes('rgb(98') ||
+                    bgColor.includes('rgb(124') || bgColor.includes('rgb(139') ||
+                    bgColor.includes('103, 80') || bgColor.includes('98, 91')) {
+                    console.log('Found purple/blue button:', btn, bgColor);
+                    btn.click();
+                    return {success: true, method: 'by-color', bgColor: bgColor};
+                }
+            }
+
+            // 3. SVG 아이콘이 있는 버튼 (생성 버튼 아이콘)
+            for (const btn of allButtons) {
+                if (btn.offsetParent === null || btn.disabled) continue;
+                const svg = btn.querySelector('svg');
+                if (svg && btn.offsetWidth > 30 && btn.offsetWidth < 80) {
+                    // 입력창 근처에 있는 작은 버튼
+                    const rect = btn.getBoundingClientRect();
+                    if (rect.bottom > window.innerHeight * 0.7) {
+                        console.log('Found SVG button near input:', btn);
+                        btn.click();
+                        return {success: true, method: 'by-svg-icon'};
+                    }
+                }
+            }
+
+            // 4. aria-label로 찾기
+            const ariaLabels = ['generate', 'create', 'submit', 'send', '생성', '만들기'];
+            for (const label of ariaLabels) {
+                const btn = document.querySelector('button[aria-label*="' + label + '" i]');
+                if (btn && btn.offsetParent !== null && !btn.disabled) {
+                    console.log('Found button by aria-label:', btn);
+                    btn.click();
+                    return {success: true, method: 'by-aria-label-' + label};
+                }
+            }
+
+            return {success: false, allButtonsCount: allButtons.length};
+        """)
+
+        if generate_clicked and generate_clicked.get('success'):
+            print(f"✅ 생성 버튼 클릭 완료 ({generate_clicked.get('method')})", flush=True)
+        else:
+            print("⚠️ 생성 버튼을 찾지 못했습니다. Enter 입력으로 계속 진행합니다.", flush=True)
+
+    except Exception as e:
+        print(f"❌ 클립보드 입력 실패: {e}", flush=True)
+        raise Exception(f"프롬프트 입력 실패: {e}")
+
+    time.sleep(3)
+
+    # 이미지 생성 대기
+    print("⏳ 이미지 생성 대기 중... (최대 120초)", flush=True)
+    image_generated = False
+    policy_violation = False
+    for i in range(120):
+        result = driver.execute_script("""
+            const imgs = Array.from(document.querySelectorAll('img'));
+            const largeImgs = imgs.filter(img => img.offsetWidth > 100 && img.offsetHeight > 100);
+            const allImgs = imgs.map(img => ({
+                src: (img.src || '').substring(0, 50),
+                width: img.offsetWidth,
+                height: img.offsetHeight
+            }));
+            const text = document.body.innerText;
+            const textLower = text.toLowerCase();
+
+            // 토스트/스낵바 요소 감지 (ImageFX 정책 위반 시 나타남)
+            const toastSelectors = [
+                '[role="alert"]',
+                '[role="status"]',
+                '[aria-live="polite"]',
+                '[aria-live="assertive"]',
+                '.snackbar', '.toast', '.notification',
+                '[class*="snackbar"]', '[class*="toast"]', '[class*="notification"]',
+                '[class*="Snackbar"]', '[class*="Toast"]', '[class*="Notification"]',
+                'mwc-snackbar', 'mat-snack-bar-container',
+                '[class*="error"]', '[class*="Error"]',
+                '[class*="warning"]', '[class*="Warning"]'
+            ];
+
+            let toastElements = [];
+            let toastText = '';
+            toastSelectors.forEach(sel => {
+                try {
+                    const elements = document.querySelectorAll(sel);
+                    elements.forEach(el => {
+                        if (el.offsetParent !== null && el.innerText && el.innerText.trim()) {
+                            toastElements.push({
+                                selector: sel,
+                                text: el.innerText.substring(0, 200),
+                                visible: true
+                            });
+                            toastText += ' ' + el.innerText;
+                        }
+                    });
+                } catch(e) {}
+            });
+
+            const toastTextLower = toastText.toLowerCase();
+
+            // 정책 위반 키워드 (본문 + 토스트 모두 체크)
+            const policyKeywords = [
+                "can't create", "cannot create", "unable to generate",
+                "violates our content policy", "against our policies",
+                "inappropriate", "정책 위반", "생성할 수 없", "부적절한",
+                "I'm unable to", "I can't help", "couldn't generate",
+                "safety", "harmful", "not allowed", "blocked",
+                "만들 수 없습니다", "요청한 항목을 만들 수 없", "다른 프롬프트를 사용"
+            ];
+
+            let keywordMatches = [];
+            policyKeywords.forEach(kw => {
+                if (textLower.includes(kw.toLowerCase()) || toastTextLower.includes(kw.toLowerCase())) {
+                    keywordMatches.push(kw);
+                }
+            });
+
+            const policyViolation = keywordMatches.length > 0;
+            const hasToast = toastElements.length > 0;
+
+            return {
+                hasLargeImage: largeImgs.length > 0,
+                largeCount: largeImgs.length,
+                totalCount: imgs.length,
+                generating: text.includes('Generating') || text.includes('생성 중') || text.includes('Loading'),
+                policyViolation: policyViolation,
+                hasToast: hasToast,
+                toastElements: toastElements,
+                toastText: toastText.substring(0, 300),
+                keywordMatches: keywordMatches,
+                sampleImages: allImgs.slice(0, 3),
+                bodyTextSample: text.substring(0, 200)
+            };
+        """)
+
+        # 토스트 감지 로그 (디버깅용)
+        if result.get('hasToast'):
+            print(f"🔔 토스트 감지됨 ({i+1}초): {result.get('toastText', '')[:100]}", flush=True)
+            if result.get('toastElements'):
+                for te in result.get('toastElements', [])[:3]:
+                    print(f"   - [{te.get('selector')}] {te.get('text', '')[:80]}", flush=True)
+
+        # 정책 위반 체크
+        if result.get('policyViolation'):
+            print(f"\n⚠️ 정책 위반 감지됨 ({i+1}초)", flush=True)
+            print(f"   매칭 키워드: {result.get('keywordMatches', [])}", flush=True)
+            print(f"   토스트 텍스트: {result.get('toastText', '')[:200]}", flush=True)
+            print(f"   본문 메시지: {result.get('bodyTextSample', '')}", flush=True)
+            policy_violation = True
+            # 정책 위반이어도 잠시 더 기다려봄 (가끔 늦게 생성되는 경우가 있음)
+            if i >= 10:  # 10초 이상 기다렸으면 종료
+                print(f"   ❌ 정책 위반으로 이미지 생성 실패", flush=True)
+                # 재시도를 위해 Exception 대신 policy_violation 플래그로 처리
+                break
+
+        if result['hasLargeImage']:
+            print(f"✅ 이미지 생성 완료! ({i+1}초) - 큰 이미지 {result['largeCount']}개 발견", flush=True)
+            image_generated = True
+            break
+
+        if i % 15 == 0 and i > 0:
+            print(f"   대기 중... ({i}초) - 큰 이미지: {result['largeCount']}개, 전체: {result['totalCount']}개, 생성 중: {result['generating']}", flush=True)
+            if i == 15:
+                print(f"   샘플 이미지: {result['sampleImages']}", flush=True)
+                # 중간 스크린샷
+                try:
+                    import tempfile
+                    mid_screenshot = os.path.join(tempfile.gettempdir(), 'imagefx_gen_' + str(i) + 's.png')
+                    driver.save_screenshot(mid_screenshot)
+                    print(f"   📸 중간 스크린샷: {mid_screenshot}", flush=True)
+                except:
+                    pass
+
+        time.sleep(1)
+
+    if not image_generated:
+        # 최종 스크린샷
+        try:
+            import tempfile
+            final_screenshot = os.path.join(tempfile.gettempdir(), 'imagefx_gen_failed.png')
+            driver.save_screenshot(final_screenshot)
+            print(f"📸 실패 스크린샷: {final_screenshot}", flush=True)
+        except:
+            pass
+        # 정책 위반인 경우 특별 처리 (재시도 가능)
+        if policy_violation:
+            return None, "POLICY_VIOLATION"
+        raise Exception("❌ 이미지 생성 실패 - 120초 내에 이미지가 생성되지 않았습니다")
+
+    time.sleep(3)
+
+    # 최근 다운로드 파일 찾기 (다운로드 전 스냅샷)
+    download_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+    image_extensions = ('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')
+    files_before = []
+    for ext in image_extensions:
+        files_before.extend(glob.glob(os.path.join(download_dir, '*' + ext)))
+        files_before.extend(glob.glob(os.path.join(download_dir, '*' + ext.upper())))
+    files_before = [f for f in files_before if not f.endswith('.crdownload') and not f.endswith('.tmp')]
+
+    # 다운로드 시도 (여러 방법)
+    print("\n📥 이미지 다운로드 시도 중...", flush=True)
+    download_success = False
+
+    # 방법 1: 다양한 선택자로 다운로드 버튼 찾기
+    try:
+        btn_info = driver.execute_script("""
+            // 선택자 리스트
+            const selectors = [
+                'button[aria-label*="Download"]',
+                'button[aria-label*="다운로드"]',
+                '[aria-label*="Download"]',
+                '[aria-label*="download"]',
+                'button[title*="Download"]',
+                'button[title*="다운로드"]'
+            ];
+
+            for (const sel of selectors) {
+                const btn = document.querySelector(sel);
+                if (btn && btn.offsetParent !== null) {
+                    btn.click();
+                    return {success: true, method: 'selector', selector: sel};
+                }
+            }
+
+            // 텍스트로 버튼 찾기
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const downloadBtn = buttons.find(btn => {
+                const text = btn.textContent.toLowerCase();
+                return text.includes('download') || text.includes('다운로드');
+            });
+
+            if (downloadBtn && downloadBtn.offsetParent !== null) {
+                downloadBtn.click();
+                return {success: true, method: 'text'};
+            }
+
+            // 아이콘으로 버튼 찾기 (svg with download icon)
+            const svgButtons = buttons.filter(btn => {
+                const svg = btn.querySelector('svg');
+                return svg && (
+                    svg.innerHTML.includes('download') ||
+                    btn.getAttribute('aria-label')?.includes('download') ||
+                    btn.getAttribute('aria-label')?.includes('Download')
+                );
+            });
+
+            if (svgButtons.length > 0 && svgButtons[0].offsetParent !== null) {
+                svgButtons[0].click();
+                return {success: true, method: 'svg'};
+            }
+
+            return {success: false};
+        """)
+
+        if btn_info.get('success'):
+            print(f"✅ 다운로드 버튼 클릭: {btn_info.get('method')} - {btn_info.get('selector', 'N/A')}", flush=True)
+            download_success = True
+    except Exception as e:
+        print(f"⚠️ 다운로드 버튼 클릭 실패: {e}", flush=True)
+
+    # 방법 2: 이미지에 우클릭 → 다운로드
+    if not download_success:
+        try:
+            print("📥 이미지 우클릭으로 다운로드 시도...", flush=True)
+            img_download = driver.execute_script("""
+                const imgs = Array.from(document.querySelectorAll('img'));
+                const largeImgs = imgs.filter(img => img.offsetWidth > 300 && img.offsetHeight > 300);
+                if (largeImgs.length > 0) {
+                    // 이미지 URL 가져오기
+                    const imgUrl = largeImgs[0].src;
+                    if (imgUrl && imgUrl.startsWith('http')) {
+                        // 이미지 다운로드 링크 생성
+                        const a = document.createElement('a');
+                        a.href = imgUrl;
+                        a.download = 'imagefx_generated.png';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        return {success: true, url: imgUrl};
+                    }
+                }
+                return {success: false};
+            """)
+
+            if img_download.get('success'):
+                print(f"✅ 이미지 URL 직접 다운로드: {img_download.get('url', '')[:50]}...", flush=True)
+                download_success = True
+        except Exception as e:
+            print(f"⚠️ 이미지 직접 다운로드 실패: {e}", flush=True)
+
+    if not download_success:
+        raise Exception("❌ 다운로드 버튼을 찾을 수 없습니다 - 이미지 다운로드 실패")
+
+    print("⏳ 다운로드 완료 대기...", flush=True)
+    time.sleep(5)
+
+    # 다운로드 후 새 파일 찾기
+    files_after = []
+    for ext in image_extensions:
+        files_after.extend(glob.glob(os.path.join(download_dir, '*' + ext)))
+        files_after.extend(glob.glob(os.path.join(download_dir, '*' + ext.upper())))
+    files_after = [f for f in files_after if not f.endswith('.crdownload') and not f.endswith('.tmp')]
+
+    new_files = [f for f in files_after if f not in files_before]
+
+    if new_files:
+        latest_file = max(new_files, key=os.path.getctime)
+        print(f"✅ 이미지 다운로드 확인: {os.path.basename(latest_file)}", flush=True)
+        return latest_file, "SUCCESS"
+    else:
+        raise Exception("❌ 다운로드된 이미지 파일을 찾을 수 없습니다 - Downloads 폴더에 새 파일이 없습니다")
+
+def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
+    """Whisk에 이미지 업로드 (피사체 영역)"""
+    print("\n" + "="*80, flush=True)
+    print("2️⃣ Whisk - 피사체 이미지 업로드", flush=True)
+    print("="*80, flush=True)
+
+    # Whisk 프로젝트 페이지로 이동
+    driver.get('https://labs.google/fx/ko/tools/whisk/project')
+    print("⏳ Whisk 페이지 로딩...", flush=True)
+
+    # 페이지 완전 로드 대기
+    for i in range(15):
+        ready = driver.execute_script("return document.readyState === 'complete'")
+        buttons_count = driver.execute_script("return document.querySelectorAll('button').length")
+        if ready and buttons_count > 5:
+            print(f"✅ Whisk 페이지 로드 완료 ({i+1}초, 버튼 {buttons_count}개)", flush=True)
+            break
+        time.sleep(1)
+    else:
+        print(f"⚠️ Whisk 페이지 로드 타임아웃, 계속 진행...", flush=True)
+
+    time.sleep(3)  # 페이지 안정화 대기
+
+    # "도구 열기" 버튼이 있으면 클릭 (랜딩 페이지인 경우)
+    open_tool_result = driver.execute_script("""
+        const elements = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+        for (const el of elements) {
+            const text = (el.textContent || '').trim();
+            if (text.includes('도구 열기') || text.includes('시작하기') ||
+                text.includes('새 프로젝트') || text === 'Open tool') {
+                el.click();
+                return {clicked: true, button: text};
+            }
+        }
+        return {clicked: false};
+    """)
+
+    if open_tool_result.get('clicked'):
+        print(f"🆕 버튼 클릭: {open_tool_result.get('button')}", flush=True)
+        time.sleep(5)  # 새 페이지 로딩 대기
+
+    time.sleep(2)  # 추가 안정화 대기
+
+    # ✅ 비율 선택 (16:9 또는 9:16)
+    if aspect_ratio:
+        print(f"📐 비율 선택 시도: {aspect_ratio}", flush=True)
+
+        # 비율에 따라 버튼 텍스트 매핑
+        # Whisk UI: 정사각형(1:1), 세로 모드(9:16), 가로 모드(16:9)
+        button_to_click = aspect_ratio
+        if aspect_ratio == '9:16':
+            button_to_click = '세로 모드'  # 9:16 = 세로 모드
+            print(f"   → 9:16 비율: '세로 모드' 선택", flush=True)
+        elif aspect_ratio == '16:9':
+            button_to_click = '가로 모드'  # 16:9 = 가로 모드
+            print(f"   → 16:9 비율: '가로 모드' 선택", flush=True)
+
+        # Step 1: 비율 선택 드롭다운/버튼 먼저 열기
+        menu_open_result = driver.execute_script("""
+            const allElements = Array.from(document.querySelectorAll('button, div[role="button"], div[role="combobox"]'));
+
+            // "비율", "aspect", "ratio" 등의 텍스트를 포함하는 요소 찾기
+            const ratioSelectorElements = allElements.filter(elem => {
+                const text = (elem.textContent || '').toLowerCase();
+                const ariaLabel = (elem.getAttribute('aria-label') || '').toLowerCase();
+                return text.includes('비율') ||
+                       text.includes('aspect') ||
+                       text.includes('ratio') ||
+                       ariaLabel.includes('비율') ||
+                       ariaLabel.includes('aspect') ||
+                       ariaLabel.includes('ratio');
+            });
+
+            // 드롭다운 열기
+            if (ratioSelectorElements.length > 0) {
+                ratioSelectorElements[0].click();
+                return {
+                    opened: true,
+                    element: ratioSelectorElements[0].tagName,
+                    text: ratioSelectorElements[0].textContent.substring(0, 50)
+                };
+            }
+
+            return {opened: false, totalElements: allElements.length};
+        """)
+
+        if menu_open_result.get('opened'):
+            print(f"✅ 비율 선택 메뉴 열림", flush=True)
+            print(f"   요소: {menu_open_result.get('element')}", flush=True)
+            time.sleep(1)  # 메뉴가 열릴 때까지 대기
+        else:
+            print(f"⚠️ 비율 선택 메뉴를 찾지 못함", flush=True)
+
+        # Step 2: 원하는 옵션 선택 (세로 모드/가로 모드 또는 9:16/16:9)
+        aspect_ratio_result = driver.execute_script("""
+            const buttonText = arguments[0];  // '세로 모드' 또는 '가로 모드'
+            const ratioText = arguments[1];   // '9:16' 또는 '16:9'
+
+            // 모든 버튼 찾기
+            const allButtons = Array.from(document.querySelectorAll('button'));
+
+            // 디버깅: 현재 페이지의 모든 버튼 텍스트 출력
+            const allButtonTexts = allButtons.map(btn => btn.textContent.trim().replace(/\\s+/g, ' ').substring(0, 50));
+            console.log('📋 모든 버튼 텍스트:', allButtonTexts);
+
+            // 비율 관련 버튼 찾기 (includes 방식으로 변경)
+            const targetButtons = allButtons.filter(button => {
+                const text = button.textContent.trim().replace(/\\s+/g, ' ');
+                // "세로 모드" 또는 "9:16"을 포함하는 버튼
+                return text.includes(buttonText) || text.includes(ratioText);
+            });
+
+            console.log('🎯 매칭된 버튼들:', targetButtons.length, '개');
+            targetButtons.forEach((btn, i) => {
+                console.log(`   [${i}] ${btn.textContent.trim().replace(/\\s+/g, ' ').substring(0, 50)}`);
+            });
+
+            if (targetButtons.length > 0) {
+                // 첫 번째 매칭된 버튼 클릭
+                const targetButton = targetButtons[0];
+                console.log('✅ 클릭할 버튼:', targetButton.textContent.trim().replace(/\\s+/g, ' '));
+                targetButton.click();
+
+                return {
+                    success: true,
+                    element: targetButton.tagName,
+                    text: targetButton.textContent.trim().replace(/\\s+/g, ' ').substring(0, 50),
+                    allButtonTexts: allButtonTexts.slice(0, 20)  // 처음 20개만
+                };
+            }
+
+            // 텍스트로 찾기 실패 시 aria-label/title 확인 (폴백)
+            for (const button of allButtons) {
+                const ariaLabel = button.getAttribute('aria-label') || '';
+                const title = button.getAttribute('title') || '';
+
+                if (ariaLabel.includes(buttonText) || ariaLabel.includes(ratioText) ||
+                    title.includes(buttonText) || title.includes(ratioText)) {
+                    button.click();
+                    return {
+                        success: true,
+                        element: 'button',
+                        method: 'aria-label-or-title'
+                    };
+                }
+            }
+
+            return {
+                success: false,
+                totalButtons: allButtons.length,
+                allButtonTexts: allButtonTexts.slice(0, 20)
+            };
+        """, button_to_click, aspect_ratio)
+
+        if aspect_ratio_result.get('success'):
+            print(f"✅ 비율 선택 성공: {aspect_ratio}", flush=True)
+            print(f"   요소: {aspect_ratio_result.get('element')}", flush=True)
+            if aspect_ratio_result.get('text'):
+                print(f"   텍스트: {aspect_ratio_result.get('text')}", flush=True)
+            time.sleep(2)  # 비율 선택 후 대기
+        else:
+            print(f"⚠️ 비율 버튼을 찾지 못함: {button_to_click} (또는 {aspect_ratio})", flush=True)
+            print(f"   총 버튼 개수: {aspect_ratio_result.get('totalButtons', 0)}", flush=True)
+            # 디버깅: 발견된 버튼 텍스트 출력
+            all_texts = aspect_ratio_result.get('allButtonTexts', [])
+            if all_texts:
+                print(f"   발견된 버튼들:", flush=True)
+                for txt in all_texts[:10]:  # 처음 10개만 출력
+                    print(f"      - {txt}", flush=True)
+
+    abs_path = os.path.abspath(image_path)
+    print(f"🔍 파일 업로드 시도: {os.path.basename(abs_path)}", flush=True)
+
+    # 방법 1: 왼쪽 사이드바 피사체 영역 찾기 (한글 텍스트로 식별)
+    print("🔍 피사체 업로드 영역 찾는 중...", flush=True)
+
+    # 피사체 영역을 정확하게 찾아서 클릭
+    subject_clicked = driver.execute_script("""
+        // Method 1: Find area containing upload or generation text
+        const allElements = Array.from(document.querySelectorAll('div, button'));
+
+        // Subject-related keywords
+        const subjectKeywords = ['이미지를 업로드', '이미지를 생성', '파일 공유', '피사체'];
+        let targetElement = null;
+
+        for (const elem of allElements) {
+            const text = elem.textContent || '';
+            const hasKeyword = subjectKeywords.some(keyword => text.includes(keyword));
+
+            if (hasKeyword) {
+                const rect = elem.getBoundingClientRect();
+                // Left sidebar area (x < 250px) with appropriate size
+                if (rect.left < 250 && rect.width > 50 && rect.height > 50) {
+                    targetElement = elem;
+
+                    // Click button if exists inside
+                    const innerButton = elem.querySelector('button');
+                    if (innerButton && innerButton.offsetParent !== null) {
+                        innerButton.click();
+                        return {
+                            success: true,
+                            method: 'korean-text-inner-button',
+                            text: text.substring(0, 50),
+                            rect: {left: rect.left, top: rect.top, width: rect.width, height: rect.height}
+                        };
+                    }
+
+                    // 버튼 없으면 해당 요소 직접 클릭
+                    elem.click();
+                    return {
+                        success: true,
+                        method: 'korean-text-element',
+                        text: text.substring(0, 50),
+                        rect: {left: rect.left, top: rect.top, width: rect.width, height: rect.height}
+                    };
+                }
+            }
+        }
+
+        // 방법 2: 점선 박스 찾기 (fallback)
+        const dashedDivs = Array.from(document.querySelectorAll('div, button')).filter(elem => {
+            const style = window.getComputedStyle(elem);
+            const rect = elem.getBoundingClientRect();
+            // border-style에 dashed가 포함되고, 왼쪽 사이드바 영역 (x < 250px)이며, 너무 작지 않은 요소
+            return (style.borderStyle === 'dashed' || style.borderStyle.includes('dashed')) &&
+                   rect.left < 250 && rect.width > 50 && rect.height > 50;
+        });
+
+        if (dashedDivs.length > 0) {
+            const firstDashed = dashedDivs[0];
+            const rect = firstDashed.getBoundingClientRect();
+
+            // 내부 버튼 찾기
+            const innerButton = firstDashed.querySelector('button');
+            if (innerButton && innerButton.offsetParent !== null) {
+                innerButton.click();
+                return {
+                    success: true,
+                    method: 'dashed-box-inner-button',
+                    rect: {left: rect.left, top: rect.top, width: rect.width, height: rect.height}
+                };
+            }
+
+            firstDashed.click();
+            return {
+                success: true,
+                method: 'dashed-box-click',
+                rect: {left: rect.left, top: rect.top, width: rect.width, height: rect.height}
+            };
+        }
+
+        return {success: false, method: 'none'};
+    """)
+
+    if subject_clicked.get('success'):
+        print(f"✅ 피사체 영역 클릭 성공: {subject_clicked.get('method')}", flush=True)
+        if subject_clicked.get('text'):
+            print(f"   텍스트: {subject_clicked.get('text')}", flush=True)
+        if subject_clicked.get('rect'):
+            print(f"   위치: {subject_clicked.get('rect')}", flush=True)
+    else:
+        print("⚠️ 피사체 영역을 찾지 못했습니다", flush=True)
+        # 디버그: 왼쪽 사이드바 구조 출력
+        debug_info = driver.execute_script("""
+            const leftElements = Array.from(document.querySelectorAll('div, button')).filter(e => {
+                const rect = e.getBoundingClientRect();
+                return rect.left < 250 && rect.top > 80 && rect.top < 500;
+            }).slice(0, 10);
+
+            return leftElements.map(e => ({
+                tag: e.tagName,
+                text: (e.textContent || '').substring(0, 50),
+                rect: {left: e.getBoundingClientRect().left, top: e.getBoundingClientRect().top}
+            }));
+        """)
+        print(f"   왼쪽 사이드바 요소들: {debug_info}", flush=True)
+
+    # 클릭 후 대기
+    time.sleep(3)
+
+    # 방법 2: file input 찾기 (최대 10초 대기)
+    print("🔍 file input 찾는 중...", flush=True)
+
+    file_input = None
+    for attempt in range(10):
+        try:
+            # 모든 file input 찾기
+            file_inputs = driver.find_elements(By.CSS_SELECTOR, 'input[type="file"]')
+
+            if file_inputs:
+                # 가장 최근에 추가된 것 사용
+                file_input = file_inputs[-1]
+                print(f"✅ file input 발견 (시도 {attempt + 1}): 총 {len(file_inputs)}개", flush=True)
+                break
+        except:
+            pass
+
+        if attempt < 9:
+            time.sleep(1)
+
+    # file input을 못 찾으면 직접 JavaScript로 찾고 트리거
+    if not file_input:
+        print("⚠️ file input을 찾지 못함, JavaScript로 직접 처리", flush=True)
+
+        # 파일 경로를 JavaScript로 전달하여 직접 처리
+        upload_result = driver.execute_script("""
+            const filePath = arguments[0];
+
+            // 1. 기존 file input 찾기
+            let fileInput = document.querySelector('input[type="file"]');
+
+            // 2. 없으면 생성
+            if (!fileInput) {
+                fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = 'image/*';
+                fileInput.style.position = 'fixed';
+                fileInput.style.top = '0';
+                fileInput.style.left = '0';
+                fileInput.style.opacity = '0.01';  // 완전히 투명하면 안 됨
+                fileInput.style.width = '10px';
+                fileInput.style.height = '10px';
+                fileInput.style.zIndex = '99999';
+                document.body.appendChild(fileInput);
+            }
+
+            return {
+                found: !!fileInput,
+                visible: fileInput.offsetParent !== null,
+                id: fileInput.id || 'no-id'
+            };
+        """, abs_path)
+
+        print(f"   JavaScript 결과: {upload_result}", flush=True)
+
+        # 다시 file input 찾기
+        try:
+            file_input = driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
+            print("✅ JavaScript로 file input 생성/발견", flush=True)
+        except Exception as e:
+            print(f"❌ file input을 찾을 수 없음: {e}", flush=True)
+            raise Exception("file input을 찾거나 생성할 수 없습니다")
+
+    # 파일 할당
+    print(f"📤 파일 할당 중: {abs_path}", flush=True)
+    try:
+        file_input.send_keys(abs_path)
+        time.sleep(2)
+        print("✅ 파일 할당 완료", flush=True)
+    except Exception as e:
+        print(f"❌ 파일 할당 실패: {e}", flush=True)
+        raise
+
+    # change 이벤트 발생 및 확인
+    driver.execute_script("""
+        const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+        console.log('File inputs found:', inputs.length);
+        inputs.forEach((input, idx) => {
+            console.log(`Input ${idx}:`, input.files?.length || 0, 'files');
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    """)
+
+    print("✅ change 이벤트 발생 완료", flush=True)
+    time.sleep(3)
+
+    # 업로드 확인 (최대 10초 대기)
+    upload_success = False
+    for i in range(10):
+        uploaded = driver.execute_script("""
+            // 업로드된 이미지 확인
+            const imgs = Array.from(document.querySelectorAll('img'));
+
+            // 피사체 영역의 이미지 찾기
+            const subjectImg = imgs.find(img => {
+                const src = img.src || '';
+                // blob URL이나 새로운 이미지
+                if (!src.startsWith('blob:') && !src.includes('googleusercontent')) {
+                    return false;
+                }
+
+                // 크기가 충분히 큰 이미지 (썸네일이 아닌)
+                if (img.offsetWidth < 50 || img.offsetHeight < 50) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            return {
+                hasImage: !!subjectImg,
+                imageCount: imgs.length,
+                imageSrc: subjectImg ? subjectImg.src.substring(0, 80) : '',
+                imageSize: subjectImg ? `${subjectImg.offsetWidth}x${subjectImg.offsetHeight}` : ''
+            };
+        """)
+
+        if uploaded.get('hasImage'):
+            print(f"✅ 이미지 업로드 확인 완료!", flush=True)
+            print(f"   이미지: {uploaded.get('imageSrc')}...", flush=True)
+            print(f"   크기: {uploaded.get('imageSize')}", flush=True)
+            upload_success = True
+            break
+        else:
+            if i == 0:
+                print(f"⏳ 업로드 확인 중... (총 이미지: {uploaded.get('imageCount')}개)", flush=True)
+            time.sleep(1)
+
+    if not upload_success:
+        print(f"❌ 업로드 확인 실패 - 피사체 영역에 이미지가 표시되지 않았습니다", flush=True)
+        # 디버그 스크린샷
+        try:
+            debug_path = abs_path.replace('.jpg', '_upload_debug.png').replace('.png', '_upload_debug.png')
+            driver.save_screenshot(debug_path)
+            print(f"📸 디버그 스크린샷: {debug_path}", flush=True)
+        except:
+            pass
+        raise Exception("❌ Whisk 피사체 영역에 이미지 업로드 실패")
+
+    time.sleep(2)
+
+def input_prompt_to_whisk(driver, prompt, wait_time=WebDriverWait, is_first=False):
+    """Whisk 입력창에 프롬프트 입력 (클립보드 + Ctrl+V 방식)"""
+    try:
+        # 클립보드에 프롬프트 복사
+        pyperclip.copy(prompt)
+        print(f"📋 클립보드에 복사: {prompt[:50]}...", flush=True)
+        time.sleep(0.3)
+
+        # 입력창 찾기 및 클릭
+        wait = WebDriverWait(driver, 10)
+        input_box = None
+
+        # 여러 선택자 시도
+        selectors = [
+            'textarea',
+            '[contenteditable="true"]',
+            'div[role="textbox"]',
+            'input[type="text"]'
+        ]
+
+        for selector in selectors:
+            try:
+                input_box = wait.until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                )
+                print(f"✅ 입력창 발견: {selector}", flush=True)
+                break
+            except:
+                continue
+
+        if not input_box:
+            # 입력창을 못 찾으면 body를 클릭
+            print("⚠️ 입력창을 찾지 못함, 페이지 클릭 시도", flush=True)
+            body = driver.find_element(By.TAG_NAME, 'body')
+            body.click()
+        else:
+            # 입력창 클릭
+            input_box.click()
+            time.sleep(0.3)
+
+            # 기존 텍스트 전체 선택 및 삭제 (중요: 이전 프롬프트 제거)
+            actions = ActionChains(driver)
+            actions.key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL).perform()
+            time.sleep(0.2)
+            actions.send_keys(Keys.DELETE).perform()
+            time.sleep(0.2)
+            print(f"🗑️ 기존 입력 내용 삭제 완료", flush=True)
+
+        # Ctrl+V로 붙여넣기 수행
+        actions = ActionChains(driver)
+        actions.key_down(Keys.CONTROL).send_keys('v').key_up(Keys.CONTROL).perform()
+        print(f"✅ Ctrl+V 붙여넣기 완료", flush=True)
+        time.sleep(0.8)
+
+        # 엔터 키 입력
+        actions = ActionChains(driver)
+        actions.send_keys(Keys.RETURN).perform()
+        print("⏎ 엔터 입력 완료", flush=True)
+        time.sleep(1)
+
+        # 생성 버튼 찾아서 클릭 (여러 가능한 텍스트/selector 시도)
+        generate_button_found = False
+        button_texts = ['Generate', 'Create', '생성', 'Remix', 'Go']
+        button_selectors = [
+            'button[type="submit"]',
+            'button[aria-label*="generate"]',
+            'button[aria-label*="create"]',
+            "button:has-text('Generate')", # Corrected: Single quotes
+            '.generate-button',
+            '[data-test-id="generate-button"]'
+        ]
+
+        # 텍스트로 버튼 찾기
+        for text in button_texts:
+            try:
+                buttons = driver.find_elements(By.XPATH, f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{text.lower()}')]")
+                for btn in buttons:
+                    if btn.is_displayed() and btn.is_enabled():
+                        btn.click()
+                        print(f"✅ '{text}' 버튼 클릭 완료", flush=True)
+                        generate_button_found = True
+                        break
+                if generate_button_found:
+                    break
+            except:
+                continue
+
+        # selector로 버튼 찾기 (텍스트로 못 찾았을 경우)
+        if not generate_button_found:
+            for selector in button_selectors:
+                try:
+                    btn = driver.find_element(By.CSS_SELECTOR, selector)
+                    if btn.is_displayed() and btn.is_enabled():
+                        btn.click()
+                        print(f"✅ 생성 버튼 클릭 완료 ({selector})", flush=True)
+                        generate_button_found = True
+                        break
+                except:
+                    continue
+
+        if not generate_button_found:
+            print("⚠️ 생성 버튼을 찾지 못함 - 엔터로 처리됨", flush=True)
+
+        return True
+
+    except Exception as e:
+        print(f"❌ 입력 오류: {e}", flush=True)
+        return False
+
+
+def download_images(driver, images, output_folder, scenes):
+    """주어진 이미지 리스트를 지정된 폴더에 다운로드합니다."""
+    print("\n" + "="*80, flush=True)
+    print("📥 이미지 다운로드 시작...", flush=True)
+    print("="*80, flush=True)
+    print(f"📁 저장 폴더: {output_folder}", flush=True)
+    print(f"🔍 다운로드 대상 이미지: {len(images)}개", flush=True)
+
+    if not images:
+        print("⚠️ 다운로드할 이미지가 없습니다.", flush=True)
+        return 0
+
+    # 디버그: 이미지 정보 상세 출력
+    for idx, img in enumerate(images):
+        print(f"   - 이미지 [{idx+1}]: {img['width']}x{img['height']}, src: {img['src'][:120]}...", flush=True)
+
+    import requests
+    import base64
+    import random
+
+    downloaded_count = 0
+
+    # ✅ Whisk는 프롬프트당 2개 이미지 생성 (정책위반 여부에 따라 1~2개)
+    # 저장 전략:
+    # 1. 둘 다 정상 → 랜덤으로 1개만 저장
+    # 2. 1개만 정책위반 → 정상인 것만 저장
+    # 3. 둘 다 정책위반 → 재시도
+
+    num_scenes = len(scenes)
+    num_images = len(images)
+
+    print(f"📊 처리할 씬: {num_scenes}개", flush=True)
+    print(f"📊 실제 수집된 이미지: {num_images}개", flush=True)
+
+    # ✅ 동적으로 씬별 이미지 개수 계산
+    # 최대 2개/씬이므로: num_images를 num_scenes로 배분
+    # 예: 8 씬, 16 이미지 → 각 2개씩
+    # 예: 8 씬, 12 이미지 → 일부는 1개, 일부는 2개
+    images_per_scene = max(1, num_images // num_scenes) if num_scenes > 0 else 2
+
+    print(f"📊 예상 씬당 이미지: {images_per_scene}개 (총 {num_images} ÷ {num_scenes} = {images_per_scene})", flush=True)
+
+    # 이미지를 씬별로 그룹화
+    scene_images = {}  # {scene_idx: [img1, img2]} 또는 {scene_idx: [img1]}
+
+    # 이미지를 씬별로 분류
+    for i, img_data in enumerate(images):
+        # ✅ 동적 계산된 images_per_scene 사용
+        scene_idx = i // images_per_scene
+
+        # 범위 체크
+        if scene_idx >= num_scenes:
+            break
+
+        if scene_idx not in scene_images:
+            scene_images[scene_idx] = []
+        scene_images[scene_idx].append(img_data)
+
+    print(f"📊 이미지 그룹화 완료: {len(scene_images)}개 씬 처리", flush=True)
+
+    # ✅ 각 씬이 이미지를 가지고 있는지 확인
+    missing_scenes = [i for i in range(num_scenes) if i not in scene_images]
+    if missing_scenes:
+        print(f"⚠️ 이미지 없는 씬: {missing_scenes} (재시도 필요)", flush=True)
+
+    # 각 씬별로 처리
+    for scene_idx in range(len(scenes)):
+        if scene_idx not in scene_images or len(scene_images[scene_idx]) == 0:
+            print(f"   ⚠️ 씬 [{scene_idx}]: 이미지 없음 (재시도 필요)", flush=True)
+            continue
+
+        img_list = scene_images[scene_idx]
+        scene = scenes[scene_idx]
+        scene_number = scene.get('scene_number') or scene.get('scene_id') or f"scene_{str(scene_idx+1).zfill(2)}"
+
+        # ✅ scene_number 정제 (파일명으로 사용 가능하게)
+        scene_number_clean = str(scene_number).replace('/', '_').replace('\\', '_').replace(':', '_')
+
+        # ✅ 저장 전략:
+        # 2개 이미지: 랜덤으로 1개 선택
+        # 1개 이미지: 그것만 저장 (정책위반으로 1개만 생성된 경우)
+        selected_img = random.choice(img_list) if len(img_list) > 1 else img_list[0]
+        selected_idx = img_list.index(selected_img)
+
+        img_src = selected_img['src']
+        print(f"   [+] [{scene_idx+1}/{len(scenes)}] {scene_number_clean} 다운로드 처리 시작...", flush=True)
+        print(f"       ({len(img_list)}개 중 {selected_idx+1}번 선택, src: {img_src[:60]}...)", flush=True)
+
+        try:
+            if selected_img.get('isBlob'):
+                print("     - Blob URL 감지. JavaScript로 base64 데이터 추출 시도.", flush=True)
+                base64_data = driver.execute_script("""
+                    const url = arguments[0];
+                    return new Promise((resolve, reject) => {
+                        fetch(url)
+                            .then(res => res.blob())
+                            .then(blob => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(blob);
+                            });
+                    });
+                """, img_src)
+
+                if base64_data and base64_data.startswith('data:image'):
+                    header, base64_str = base64_data.split(',', 1)
+                    ext = '.' + header.split(';')[0].split('/')[-1] if 'image' in header else '.png'
+                    output_path = os.path.join(output_folder, f"{scene_number_clean}{ext}")
+
+                    # ✅ 폴더 존재 확인
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+                    image_bytes = base64.b64decode(base64_str)
+                    with open(output_path, 'wb') as f:
+                        f.write(image_bytes)
+
+                    # ✅ 파일 저장 확인
+                    if os.path.exists(output_path):
+                        file_size = os.path.getsize(output_path)
+                        print(f"     ✅ 성공 (blob): {os.path.basename(output_path)} ({file_size} bytes)", flush=True)
+                        downloaded_count += 1
+                    else:
+                        print(f"     ❌ 파일 저장됨에도 확인 불가: {output_path}", flush=True)
+                else:
+                    print(f"     ❌ 실패: blob URL을 base64로 변환하지 못했습니다.", flush=True)
+
+            elif img_src.startswith('http'):
+                print("     - HTTP/HTTPS URL 감지. requests로 다운로드 시도.", flush=True)
+                ext = '.jpg'
+                if 'png' in img_src.lower(): ext = '.png'
+                elif 'webp' in img_src.lower(): ext = '.webp'
+                output_path = os.path.join(output_folder, f"{scene_number_clean}{ext}")
+
+                # ✅ 폴더 존재 확인
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+                response = requests.get(img_src, timeout=30, headers={'Referer': 'https://labs.google/'})
+                if response.status_code == 200:
+                    with open(output_path, 'wb') as f:
+                        f.write(response.content)
+
+                    # ✅ 파일 저장 확인
+                    if os.path.exists(output_path):
+                        file_size = os.path.getsize(output_path)
+                        print(f"     ✅ 성공 (http): {os.path.basename(output_path)} ({file_size} bytes)", flush=True)
+                        downloaded_count += 1
+                    else:
+                        print(f"     ❌ 파일 저장됨에도 확인 불가: {output_path}", flush=True)
+                else:
+                    print(f"     ❌ 실패: HTTP 상태 코드 {response.status_code}", flush=True)
+            else:
+                print(f"     ⚠️ 알 수 없는 URL 형식: {img_src[:60]}...", flush=True)
+
+        except Exception as e:
+            print(f"     ❌ 예외 발생: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+
+    # ✅ 다운로드 검증
+    # 목표: 씬당 정확히 1개씩 저장
+    expected_count = len(scenes)
+
+    print(f"\n✅ 다운로드 완료: 총 {downloaded_count}개 파일 저장됨", flush=True)
+    print(f"   목표: {expected_count}개, 실제: {downloaded_count}개", flush=True)
+
+    if downloaded_count == expected_count:
+        print(f"   ✅ 검증 성공 (씬당 1개씩 저장)", flush=True)
+    elif downloaded_count < expected_count:
+        print(f"   ⚠️ 일부 씬에서 저장 실패 ({downloaded_count}/{expected_count}개)", flush=True)
+        print(f"      재시도 필요한 씬: {expected_count - downloaded_count}개", flush=True)
+    else:
+        print(f"   ⚠️ 예상보다 많음 ({downloaded_count}/{expected_count}개)", flush=True)
+
+    return downloaded_count
+
+def main(scenes_json_file, use_imagefx=False, output_dir=None):
+    """메인 실행 함수"""
+    # 로그 파일 설정 (output_dir이 있으면 로그 파일 생성)
+    log_file = setup_logging(output_dir)
+
+    print("=" * 80, flush=True)
+    if use_imagefx:
+        print("🚀 ImageFX + Whisk 자동화 시작", flush=True)
+    else:
+        print("🚀 Whisk 자동화 시작", flush=True)
+    print("=" * 80, flush=True)
+
+    # JSON 파일 읽기
+    try:
+        with open(scenes_json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # ✅ JSON 구조 디버깅
+        print(f"📋 JSON 구조: {list(data.keys()) if isinstance(data, dict) else 'list'}", flush=True)
+
+        # scenes가 배열이면 그대로, 객체면 scenes 키에서 추출
+        if isinstance(data, list):
+            scenes = data
+            aspect_ratio = None  # 배열 형식에는 metadata 없음
+            product_thumbnail = None  # 배열 형식에는 product_info 없음
+            print(f"⚠️ JSON이 배열 형식 (metadata 없음, 기본값 사용)", flush=True)
+        elif isinstance(data, dict) and 'scenes' in data:
+            scenes = data['scenes']
+            # metadata에서 aspect_ratio 추출
+            metadata = data.get('metadata', {})
+            aspect_ratio = metadata.get('aspect_ratio')
+            format_type = metadata.get('format')
+
+            # ✅ 디버깅: metadata 확인
+            print(f"📦 Metadata: {metadata}", flush=True)
+            print(f"   format: {format_type}, aspect_ratio: {aspect_ratio}", flush=True)
+
+            # product_info에서 썸네일 추출 (상품 영상인 경우)
+            product_info = data.get('product_info', {})
+            product_thumbnail = product_info.get('thumbnail', '')
+
+            # aspect_ratio가 없으면 format 필드에서 추출 시도
+            if not aspect_ratio and format_type:
+                # format이 "9:16 vertical (portrait)" 또는 "16:9" 형식인지 확인
+                if '9:16' in str(format_type):
+                    aspect_ratio = '9:16'
+                elif '16:9' in str(format_type):
+                    aspect_ratio = '16:9'
+                elif format_type == 'longform':
+                    aspect_ratio = '16:9'
+                elif format_type in ['shortform', 'product', 'sora2']:
+                    aspect_ratio = '9:16'
+
+            print(f"✅ 비디오 형식: {format_type or 'unknown'} → 비율: {aspect_ratio or 'default'}", flush=True)
+            if product_thumbnail:
+                print(f"🛒 상품 썸네일: {product_thumbnail[:80]}...", flush=True)
+        else:
+            print(f"❌ JSON 형식 오류: scenes 배열을 찾을 수 없습니다", flush=True)
+            print(f"   JSON 키들: {list(data.keys()) if isinstance(data, dict) else 'list'}", flush=True)
+            return 1
+    except Exception as e:
+        print(f"❌ JSON 파일 읽기 실패: {e}", flush=True)
+        return 1
+
+    if not scenes or len(scenes) == 0:
+        print("❌ 씬 데이터가 없습니다.", flush=True)
+        return 1
+
+    print(f"📝 총 {len(scenes)}개 씬 처리 예정\n", flush=True)
+
+    driver = None
+    try:
+        driver = setup_chrome_driver()
+
+        # ImageFX 사용 시 첫 이미지 생성 및 업로드
+        if use_imagefx:
+            # 첫 번째 씬 정보 확인
+            first_scene = scenes[0]
+            print(f"\n📋 첫 번째 씬 데이터:", flush=True)
+            print(f"   scene_number: {first_scene.get('scene_number')}", flush=True)
+            print(f"   scene_id: {first_scene.get('scene_id')}", flush=True)
+            print(f"   has image_prompt: {bool(first_scene.get('image_prompt'))}", flush=True)
+            print(f"   has sora_prompt: {bool(first_scene.get('sora_prompt'))}", flush=True)
+
+            first_prompt = first_scene.get('image_prompt') or first_scene.get('sora_prompt') or ''
+
+            if not first_prompt:
+                print(f"❌ 첫 번째 씬에 프롬프트가 없습니다", flush=True)
+                print(f"   씬 데이터: {first_scene}", flush=True)
+                raise Exception("첫 번째 씬에 프롬프트가 없습니다")
+
+            # 어떤 필드에서 읽었는지 로그
+            prompt_source = 'image_prompt' if first_scene.get('image_prompt') else 'sora_prompt'
+            print(f"✅ 프롬프트 읽기 성공 (출처: {prompt_source})", flush=True)
+            print(f"   내용: {first_prompt[:100]}{'...' if len(first_prompt) > 100 else ''}\n", flush=True)
+
+            # ImageFX로 첫 이미지 생성 (정책 위반 시 최대 2회 재시도)
+            max_retries = 3  # 최초 1회 + 재시도 2회
+            current_prompt = first_prompt
+            image_path = None
+
+            for retry in range(max_retries):
+                if retry > 0:
+                    print(f"\n🔄 정책 위반으로 인한 재시도 {retry}/2", flush=True)
+                    # 프롬프트 안전화 (정책 우회)
+                    current_prompt = sanitize_prompt_for_google(current_prompt)
+                    print(f"   🛡️ 안전화된 프롬프트: {current_prompt[:100]}...", flush=True)
+
+                result = generate_image_with_imagefx(driver, current_prompt)
+
+                # 튜플 반환 처리
+                if isinstance(result, tuple):
+                    image_path, status = result
+                    if status == "SUCCESS":
+                        print(f"✅ ImageFX 이미지 생성 성공!", flush=True)
+                        break
+                    elif status == "POLICY_VIOLATION":
+                        print(f"⚠️ 정책 위반 감지됨", flush=True)
+                        if retry < max_retries - 1:
+                            print(f"   → 프롬프트를 수정하여 재시도합니다...", flush=True)
+                            time.sleep(3)
+                            continue
+                        else:
+                            raise Exception("❌ ImageFX 정책 위반: 최대 재시도 횟수(2회) 초과")
+                else:
+                    # 이전 버전 호환 (단일 값 반환)
+                    image_path = result
+                    break
+
+            if not image_path:
+                raise Exception("❌ ImageFX 이미지 생성 실패")
+
+            # Whisk에 업로드 (aspect_ratio 전달)
+            upload_image_to_whisk(driver, image_path, aspect_ratio)
+
+        else:
+            # Whisk만 사용
+            print(f"\n{'='*80}", flush=True)
+            print(f"📌 Whisk 시작", flush=True)
+            print(f"{ '='*80}", flush=True)
+            driver.get('https://labs.google/fx/ko/tools/whisk/project')
+            time.sleep(3)
+
+            # ✅ 비율 선택 (Whisk만 사용할 때)
+            # 9:16 비율인 경우 "가로 모드(Horizontal)" 버튼 선택
+            if aspect_ratio:
+                print(f"📐 비율 선택 시도: {aspect_ratio}", flush=True)
+
+                # 9:16일 때는 "가로 모드" 또는 "Horizontal" 선택
+                button_to_click = aspect_ratio
+                if aspect_ratio == '9:16':
+                    button_to_click = 'Horizontal'  # 9:16 비율에서 가로 모드 선택
+                    print(f"   → 9:16 비율: '가로 모드(Horizontal)' 선택", flush=True)
+
+                # Step 1: 비율 선택 드롭다운/버튼 먼저 열기
+                menu_open_result = driver.execute_script("""
+                    const allElements = Array.from(document.querySelectorAll('button, div[role="button"], div[role="combobox"]'));
+
+                    // "비율", "aspect", "ratio" 등의 텍스트를 포함하는 요소 찾기
+                    const ratioSelectorElements = allElements.filter(elem => {
+                        const text = (elem.textContent || '').toLowerCase();
+                        const ariaLabel = (elem.getAttribute('aria-label') || '').toLowerCase();
+                        return text.includes('비율') ||
+                               text.includes('aspect') ||
+                               text.includes('ratio') ||
+                               ariaLabel.includes('비율') ||
+                               ariaLabel.includes('aspect') ||
+                               ariaLabel.includes('ratio');
+                    });
+
+                    // 드롭다운 열기
+                    if (ratioSelectorElements.length > 0) {
+                        ratioSelectorElements[0].click();
+                        return {
+                            opened: true,
+                            element: ratioSelectorElements[0].tagName,
+                            text: ratioSelectorElements[0].textContent.substring(0, 50)
+                        };
+                    }
+
+                    return {opened: false, totalElements: allElements.length};
+                """)
+
+                if menu_open_result.get('opened'):
+                    print(f"✅ 비율 선택 메뉴 열림", flush=True)
+                    print(f"   요소: {menu_open_result.get('element')}", flush=True)
+                    time.sleep(1)  # 메뉴가 열릴 때까지 대기
+                else:
+                    print(f"⚠️ 비율 선택 메뉴를 찾지 못함", flush=True)
+
+                # Step 2: 원하는 옵션 선택
+                aspect_ratio_result = driver.execute_script("""
+                    const buttonText = arguments[0];  // ✅ aspect_ratio 대신 button_to_click 사용
+
+                    // button 요소만 찾기 (더 정확함)
+                    const allButtons = Array.from(document.querySelectorAll('button'));
+
+                    // 정확히 buttonText 텍스트만 가진 버튼 찾기
+                    const targetButtons = allButtons.filter(button => {
+                        const text = button.textContent.trim();
+                        return text === buttonText;
+                    });
+
+                    // 디버깅: 찾은 모든 버튼 출력
+                    console.log('🔍 찾은 버튼들:', targetButtons.length, '개');
+                    const foundTexts = targetButtons.map(btn => btn.textContent.trim());
+                    console.log('   텍스트들:', foundTexts);
+
+                    if (targetButtons.length > 0) {
+                        // 첫 번째 매칭된 버튼 클릭
+                        const targetButton = targetButtons[0];
+
+                        console.log('🎯 선택된 버튼:', targetButton.tagName, targetButton.textContent.trim());
+                        console.log('   클래스:', targetButton.className);
+                        targetButton.click();
+
+                        return {
+                            success: true,
+                            element: targetButton.tagName,
+                            text: targetButton.textContent.trim(),
+                            className: targetButton.className,
+                            allFoundTexts: foundTexts
+                        };
+                    }
+
+                    // 텍스트로 찾기 실패 시 aria-label/title 확인 (폴백)
+                    for (const button of allButtons) {
+                        const ariaLabel = button.getAttribute('aria-label') || '';
+                        const title = button.getAttribute('title') || '';
+
+                        if (ariaLabel.includes(buttonText) || title.includes(buttonText)) {
+                            button.click();
+                            return {
+                                success: true,
+                                element: 'button',
+                                method: 'aria-label-or-title'
+                            };
+                        }
+                    }
+
+                    return {success: false, totalButtons: allButtons.length};
+                """, button_to_click)
+
+                if aspect_ratio_result.get('success'):
+                    print(f"✅ 비율 선택 성공: {aspect_ratio}", flush=True)
+                    print(f"   요소: {aspect_ratio_result.get('element')}", flush=True)
+                    if aspect_ratio_result.get('role'):
+                        print(f"   역할: {aspect_ratio_result.get('role')}", flush=True)
+                    if aspect_ratio_result.get('text'):
+                        print(f"   텍스트: {aspect_ratio_result.get('text')}", flush=True)
+                    time.sleep(2)  # 비율 선택 후 대기
+                else:
+                    print(f"⚠️ 비율 버튼을 찾지 못함: {aspect_ratio}", flush=True)
+                    print(f"   페이지 요소 개수: {aspect_ratio_result.get('totalElements', 0)}", flush=True)
+
+        # 상품 썸네일이 있으면 Whisk에 먼저 업로드
+        product_thumbnail_path = None
+        if product_thumbnail:
+            print("\n" + "="*80, flush=True)
+            print("🛒 상품 썸네일 다운로드 및 업로드", flush=True)
+            print("="*80, flush=True)
+
+            try:
+                import requests
+                import tempfile
+
+                # 임시 파일에 썸네일 다운로드
+                response = requests.get(product_thumbnail, timeout=30)
+                if response.status_code == 200:
+                    # 확장자 결정
+                    ext = '.jpg'
+                    if 'png' in product_thumbnail.lower():
+                        ext = '.png'
+                    elif 'webp' in product_thumbnail.lower():
+                        ext = '.webp'
+
+                    # 임시 파일 저장
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    product_thumbnail_path = temp_file.name
+
+                    print(f"✅ 썸네일 다운로드 완료: {os.path.basename(product_thumbnail_path)}", flush=True)
+
+                    # Whisk에 썸네일 업로드
+                    upload_image_to_whisk(driver, product_thumbnail_path, aspect_ratio)
+                    print(f"✅ 상품 썸네일 Whisk 업로드 완료", flush=True)
+                else:
+                    print(f"⚠️ 썸네일 다운로드 실패: HTTP {response.status_code}", flush=True)
+            except Exception as e:
+                print(f"⚠️ 썸네일 처리 실패: {e}", flush=True)
+
+        # === 출력 폴더 결정 (마커 생성 전에 먼저 정의) ===
+        if output_dir:
+            output_folder = os.path.abspath(output_dir)
+        else:
+            output_folder = os.path.dirname(os.path.abspath(scenes_json_file))
+
+        # ✅ 폴더 생성 (없으면 만듦)
+        try:
+            os.makedirs(output_folder, exist_ok=True)
+            print(f"📁 출력 폴더: {output_folder}", flush=True)
+            print(f"✅ 폴더 생성/확인 완료", flush=True)
+        except Exception as e:
+            print(f"❌ 폴더 생성 실패: {e}", flush=True)
+            raise
+
+        # Whisk 프롬프트 입력
+        print("\n" + "="*80, flush=True)
+        print("3️⃣ Whisk - 프롬프트 입력", flush=True)
+        print("="*80, flush=True)
+
+        # === 크롤링 진행 상태 마커 생성 ===
+        progress_marker = os.path.join(output_folder, '.crawl_progress')
+        try:
+            with open(progress_marker, 'w') as f:
+                f.write(f"Started at: {datetime.datetime.now().isoformat()}\nScenes: {len(scenes)}\n")
+            print(f"✅ 크롤링 진행 상태 마커 생성: {progress_marker}", flush=True)
+        except Exception as e:
+            print(f"⚠️ 진행 상태 마커 생성 실패: {e}", flush=True)
+
+        # 모든 씬을 순차적으로 처리
+        for i in range(len(scenes)):
+            scene = scenes[i]
+            scene_number = scene.get('scene_number') or scene.get('scene_id') or f"scene_{str(i).zfill(2)}"
+
+            # 프롬프트 읽기 (디버그 로그 포함)
+            prompt = scene.get('image_prompt') or scene.get('sora_prompt') or ''
+
+            if not prompt:
+                print(f"⏭️ {scene_number} - 프롬프트 없음", flush=True)
+                continue
+
+            # 프롬프트는 story.json에 이미 최적화되어 있으므로 그대로 사용
+            # sanitize 함수는 필요시에만 적용 (기본적으로 원본 사용)
+            safe_prompt = prompt  # sanitize_prompt_for_google(prompt) 비활성화
+
+            # 디버그: 원본 프롬프트 일부 출력 (중복 확인용)
+            print(f"\n🔍 {scene_number} 프롬프트 확인:", flush=True)
+            print(f"   첫 100자: {prompt[:100]}...", flush=True)
+            print(f"   마지막 50자: ...{prompt[-50:]}", flush=True)
+
+            max_retries = 2
+            for attempt in range(max_retries):
+                print(f"\n{'-'*80}", flush=True)
+                print(f"📌 {scene_number} 입력 중 (시도 {attempt + 1}/{max_retries})...", flush=True)
+                print(f"{'-'*80}", flush=True)
+
+                prompt_source = 'image_prompt' if scene.get('image_prompt') else 'sora_prompt'
+                print(f"   프롬프트 출처: {prompt_source}", flush=True)
+                print(f"   내용: {safe_prompt[:80]}{'...' if len(safe_prompt) > 80 else ''}", flush=True)
+
+                # 프롬프트 입력 (원본 프롬프트 그대로 사용)
+                success = input_prompt_to_whisk(driver, safe_prompt, is_first=(i == 0 and attempt == 0))
+
+                if not success:
+                    print(f"⚠️ {scene_number} 입력 실패", flush=True)
+                    if attempt < max_retries - 1:
+                        print(f"   {max_retries - attempt - 1}회 재시도 남음", flush=True)
+                        time.sleep(3)
+                        continue
+                    else:
+                        print(f"   ❌ 최대 재시도 횟수 초과, 다음 씬으로 이동", flush=True)
+                        break
+
+                # 입력 성공 - 정책 위반 체크 비활성화 (오탐지로 인한 이미지 생성 건너뛰기 방지)
+                # 정책 위반 체크는 나중에 이미지 생성 대기 중에 수행
+                print(f"✅ {scene_number} 입력 완료", flush=True)
+                break  # 성공하면 재시도 루프 탈출
+
+                # 정책 위반 체크는 비활성화 (오탐지 문제 - ImageFX 대기 루프에서 처리)
+            
+            # 타이밍 제어 - 각 프롬프트 제출 후 충분한 대기 시간 확보
+            if i < len(scenes) - 1:  # 마지막 씬이 아니면
+                if i == 0:  # 첫 번째 씬 후
+                    delay = 3
+                elif i == 1:  # 두 번째 씬 후
+                    delay = 5
+                else:  # 그 이후
+                    delay = 15
+                print(f"\n⏳ 다음 씬까지 {delay}초 대기 중 (Whisk 처리 시간 확보)...", flush=True)
+                time.sleep(delay)
+
+        print(f"\n{'='*80}", flush=True)
+        print("✅ 모든 프롬프트 입력 완료!", flush=True)
+        print(f"{ '='*80}", flush=True)
+
+        # === 이미지 생성 대기 ===
+        print("\n" + "="*80, flush=True)
+        print("🕐 이미지 생성 대기", flush=True)
+        print("="*80, flush=True)
+
+        # 씬 개수에 비례한 타임아웃 설정 (씬당 90초 - Whisk는 생성이 느림)
+        max_wait_time = max(120, len(scenes) * 90)  # 최소 120초
+        print(f"⏳ 이미지 생성 중... (최대 {max_wait_time}초, 씬 {len(scenes)}개)", flush=True)
+
+        # 디버그: 초기 페이지 상태 확인
+        page_info = driver.execute_script("""
+            return {
+                url: window.location.href,
+                title: document.title,
+                bodyText: document.body.innerText.substring(0, 200)
+            };
+        """)
+        print(f"📋 페이지 정보:", flush=True)
+        print(f"   URL: {page_info['url']}", flush=True)
+        print(f"   제목: {page_info['title']}", flush=True)
+        print(f"   본문 일부: {page_info['bodyText'][:100]}...", flush=True)
+
+        # 스크린샷 저장
+        try:
+            screenshot_path = os.path.join(os.path.dirname(os.path.abspath(scenes_json_file)), 'whisk_debug.png')
+            driver.save_screenshot(screenshot_path)
+            print(f"📸 스크린샷 저장: {screenshot_path}", flush=True)
+        except Exception as e:
+            print(f"⚠️ 스크린샷 저장 실패: {e}", flush=True)
+
+        for i in range(max_wait_time):
+            result = driver.execute_script("""
+                const text = document.body.innerText;
+                const imgs = Array.from(document.querySelectorAll('img'));
+
+                // Whisk 결과 이미지 필터링: blob URL이면서 충분히 큰 이미지
+                const whiskImgs = imgs.filter(img => {
+                    const src = img.src || '';
+                    // blob URL 또는 http URL
+                    if (!src.startsWith('blob:') && !src.startsWith('http')) return false;
+                    // data URL 제외
+                    if (src.startsWith('data:')) return false;
+                    // 충분히 큰 이미지 (natural 크기 또는 offset 크기)
+                    const hasSize = (img.naturalWidth > 100 && img.naturalHeight > 100) ||
+                                   (img.offsetWidth > 100 && img.offsetHeight > 100);
+                    return hasSize;
+                });
+
+                const allImgs = imgs.map(img => ({
+                    src: img.src.substring(0, 50),
+                    width: img.offsetWidth,
+                    height: img.offsetHeight,
+                    naturalWidth: img.naturalWidth,
+                    naturalHeight: img.naturalHeight
+                }));
+
+                // 정책 위반 감지 완전 비활성화 - 오탐지로 인해 이미지 생성이 불가능
+                const policyViolation = false; // 항상 false 반환
+
+                return {
+                    generating: text.includes('Generating') || text.includes('생성 중') || text.includes('Loading') || text.includes('처리'),
+                    policyViolation: policyViolation,  // 항상 false
+                    imageCount: whiskImgs.length,
+                    allImagesCount: imgs.length,
+                    sampleImages: allImgs.slice(0, 5),
+                    bodyTextSample: text.substring(0, 200)
+                };
+            """)
+
+            # 정책 위반 감지
+            if result.get('policyViolation'):
+                print(f"\n⚠️ 정책 위반 감지됨 ({i}초)", flush=True)
+                print(f"   일부 이미지가 정책 위반으로 생성되지 않았을 수 있습니다", flush=True)
+                print(f"   생성된 이미지: {result['imageCount']}개", flush=True)
+                print(f"   페이지 텍스트 샘플: {result.get('bodyTextSample', '')}",flush=True)
+                # 정책 위반이 있어도 생성된 이미지가 있으면 계속 진행
+                if result['imageCount'] > 0:
+                    print(f"   ✅ {result['imageCount']}개 이미지는 정상 생성됨, 계속 진행", flush=True)
+                    time.sleep(5)  # 추가 대기
+                    break
+                else:
+                    # 이미지가 하나도 없고 정책 위반이면 경고
+                    print(f"   ❌ 생성된 이미지가 없습니다. 정책 위반으로 생성 실패한 것으로 보입니다.", flush=True)
+                    if i >= 30:  # 30초 대기 후에도 이미지 없으면 조기 종료
+                        print(f"   ⚠️ 30초 대기 후에도 이미지가 없어 중단합니다.", flush=True)
+                        break
+
+            # 모든 씬의 이미지가 생성될 때까지 대기
+            # Whisk는 씬당 여러 배리에이션을 생성할 수 있으므로, 최소 씬 개수만큼만 확인
+            expected_count = len(scenes)
+            if result['imageCount'] >= expected_count:
+                # Generating 상태가 아니면 완료
+                if not result['generating']:
+                    print(f"✅ 생성 완료! ({i+1}초) - 이미지 {result['imageCount']}/{expected_count}개 발견", flush=True)
+                    break
+                else:
+                    # 이미지는 있지만 아직 생성 중
+                    if i % 20 == 0 and i > 0:
+                        print(f"   생성 진행 중... ({i}초) - 이미지 {result['imageCount']}개 발견, 추가 생성 대기 중", flush=True)
+            elif i >= max_wait_time - 1:
+                # 타임아웃 (현재까지 생성된 만큼만 사용)
+                print(f"⚠️ 타임아웃 ({i+1}초/{max_wait_time}초) - 이미지 {result['imageCount']}/{expected_count}개 발견", flush=True)
+                if result['imageCount'] < expected_count:
+                    print(f"⚠️ 경고: {expected_count - result['imageCount']}개 이미지가 생성되지 않았습니다!", flush=True)
+                    print(f"   샘플 이미지 (최대 5개): {result['sampleImages']}", flush=True)
+                break
+
+            if i % 15 == 0 and i > 0:
+                print(f"   대기 중... ({i}초) - Whisk 이미지: {result['imageCount']}개, 전체: {result['allImagesCount']}개", flush=True)
+                if i == 15:
+                    print(f"   샘플 (최대 5개): {result['sampleImages']}", flush=True)
+            time.sleep(1)
+
+        time.sleep(5)
+
+        # === 이미지 다운로드 (디버깅 강화) ===
+        print("\n" + "="*80, flush=True)
+        print("🔍 Whisk 다운로드 디버깅 시작", flush=True)
+        print("="*80, flush=True)
+
+        # 스크린샷 저장
+        try:
+            screenshot_path = os.path.join(os.path.dirname(os.path.abspath(scenes_json_file)), 'whisk_debug.png')
+            driver.save_screenshot(screenshot_path)
+            print(f"📸 스크린샷 저장: {screenshot_path}", flush=True)
+        except Exception as e:
+            print(f"⚠️ 스크린샷 저장 실패: {e}", flush=True)
+
+        # 백업 로직 제거 - 새 파일이 자동으로 기존 파일을 덮어씀
+        print("ℹ️ 백업 없이 새 이미지로 직접 교체합니다.", flush=True)
+        
+        # 페이지의 모든 이미지 찾기 (blob 포함)
+        # ✅ Whisk의 결과 이미지를 정확하게 타겟팅 - 모든 이미지 수집 (순서 보존)
+        images = driver.execute_script("""
+            const imgs = Array.from(document.querySelectorAll('img'));
+            console.log('[DEBUG] Total imgs on page:', imgs.length);
+
+            // 1단계: 기본 필터링 (크기, URL 타입)
+            const basicFiltered = imgs.filter(img => {
+                // ✅ 최소 크기 기준 완화 (60x60으로 낮춤 - 첫 이미지 놓치지 않기)
+                if (img.offsetWidth < 60 || img.offsetHeight < 60) return false;
+
+                const src = img.src || '';
+                // data: URL 제외
+                if (src.startsWith('data:')) return false;
+
+                // http 또는 blob URL만 허용
+                if (!src.startsWith('http') && !src.startsWith('blob:')) return false;
+
+                return true;
+            });
+            console.log('[DEBUG] After basic filter:', basicFiltered.length);
+
+            // ✅ 크기 정렬 제거 - 수집 순서 보존 (첫 이미지부터 순서대로)
+            console.log('[DEBUG] Images (in order):');
+            basicFiltered.slice(0, 10).forEach((img, idx) => {
+                console.log(`  [${idx}] ${img.offsetWidth}x${img.offsetHeight} - ${img.src.substring(0, 60)}`);
+            });
+
+            return basicFiltered.map(img => ({
+                src: img.src,
+                width: img.offsetWidth,
+                height: img.offsetHeight,
+                alt: img.alt || '',
+                isBlob: img.src.startsWith('blob:')
+            }));
+        """)
+        
+        # 디버그: 수집된 이미지 정보 출력
+        print(f"📋 수집된 이미지 정보 ({len(images)}개):", flush=True)
+        print(json.dumps(images, indent=2, ensure_ascii=False), flush=True)
+
+        # === 이미지 다운로드 및 성공 여부 확인 ===
+        downloaded_count = download_images(driver, images, output_folder, scenes)
+
+        # ✅ 다운로드 검증
+        # 목표: 씬당 1개씩 총 len(scenes)개
+        expected_count = len(scenes)
+        if downloaded_count == 0:
+            raise Exception(f"❌ 크롤링 실패: 이미지가 0개 다운로드됨")
+        elif downloaded_count < expected_count:
+            print(f"\n⚠️ 경고: {downloaded_count}/{expected_count}개만 저장됨 (부분 성공)", flush=True)
+            print(f"   {expected_count - downloaded_count}개 씬에 대해 재시도가 필요합니다", flush=True)
+        else:
+            print(f"\n✅ 검증 성공: {downloaded_count}개 이미지 저장됨 (목표: {expected_count}개)", flush=True)
+
+        print(f"\n{'='*80}", flush=True)
+        print("🎉 전체 워크플로우 완료!", flush=True)
+        print(f"{ '='*80}", flush=True)
+
+        return 0
+
+    except Exception as e:
+        print(f"❌ 오류 발생: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return 1
+
+    finally:
+        # === 크롤링 완료 상태 마커 생성 및 진행 마커 제거 ===
+        # 성공 여부: 예외가 발생하지 않았으면 성공
+        crawl_success = 'e' not in locals() or e is None
+
+        try:
+            if 'output_folder' in locals():
+                # ✅ 성공한 경우만 .crawl_complete 마커 생성
+                if crawl_success:
+                    completion_marker = os.path.join(output_folder, '.crawl_complete')
+                    try:
+                        with open(completion_marker, 'w') as f:
+                            f.write(f"Completed at: {datetime.datetime.now().isoformat()}\n")
+                        print(f"✅ 크롤링 완료 상태 마커 생성: {completion_marker}", flush=True)
+                    except Exception as e:
+                        print(f"⚠️ 완료 상태 마커 생성 실패: {e}", flush=True)
+                else:
+                    # ❌ 실패한 경우: .crawl_failed 마커 생성 (선택사항)
+                    failed_marker = os.path.join(output_folder, '.crawl_failed')
+                    try:
+                        with open(failed_marker, 'w') as f:
+                            f.write(f"Failed at: {datetime.datetime.now().isoformat()}\n")
+                        print(f"❌ 크롤링 실패 마커 생성: {failed_marker}", flush=True)
+                    except Exception as exc:
+                        print(f"⚠️ 실패 마커 생성 실패: {exc}", flush=True)
+
+                # .crawl_progress 마커 제거 (성공/실패 모두 제거)
+                progress_marker = os.path.join(output_folder, '.crawl_progress')
+                try:
+                    if os.path.exists(progress_marker):
+                        os.remove(progress_marker)
+                        print(f"✅ 크롤링 진행 상태 마커 제거: {progress_marker}", flush=True)
+                except Exception as e:
+                    print(f"⚠️ 진행 상태 마커 제거 실패: {e}", flush=True)
+        except Exception as e:
+            print(f"⚠️ 상태 마커 처리 실패: {e}", flush=True)
+
+        # 임시 파일 정리
+        try:
+            if 'product_thumbnail_path' in locals() and product_thumbnail_path and os.path.exists(product_thumbnail_path):
+                os.remove(product_thumbnail_path)
+                print(f"🗑️ 임시 썸네일 파일 삭제: {product_thumbnail_path}", flush=True)
+        except Exception as e:
+            print(f"⚠️ 임시 파일 삭제 실패: {e}", flush=True)
+
+        if driver:
+            print("\n✅ 작업 완료. 브라우저를 닫습니다.", flush=True)
+            driver.quit()
+
+        # 로그 파일 닫기
+        if log_file:
+            try:
+                print(f"\n{'='*80}", flush=True)
+                print(f"📋 로그 종료 - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+                print(f"{'='*80}", flush=True)
+                log_file.close()
+            except:
+                pass
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='이미지 크롤링 자동화')
+    parser.add_argument('scenes_file', help='씬 데이터 JSON 파일')
+    parser.add_argument('--use-imagefx', action='store_true', help='ImageFX로 첫 이미지 생성')
+    parser.add_argument('--output-dir', help='이미지를 저장할 기본 디렉토리 (지정하지 않으면 scenes_file 경로 기준)')
+    parser.add_argument('--images-per-prompt', type=int, default=1, help='프롬프트당 생성할 이미지 개수 (기본: 1)')
+
+    args = parser.parse_args()
+    print(f"--- ARGS: {args} ---", flush=True)
+    sys.exit(main(args.scenes_file, use_imagefx=args.use_imagefx, output_dir=args.output_dir))
