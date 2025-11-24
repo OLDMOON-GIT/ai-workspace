@@ -14,7 +14,6 @@ import os
 import glob
 import argparse
 import datetime
-import shutil
 
 # Windows 인코딩 문제 해결
 if sys.platform == 'win32':
@@ -100,26 +99,9 @@ def sanitize_prompt_for_google(prompt):
     - 실제 인물, 브랜드, 로고
     - 위험한 활동
     - 저작권 침해
-    - 특정 인종/민족 반복 강조
     """
     if not prompt or not isinstance(prompt, str):
         return prompt
-
-    # 문제가 될 수 있는 패턴 제거
-    import re
-
-    # 특정 인종/민족 관련 표현 중립화
-    prompt = re.sub(r'\bSAME KOREAN PERSON\b', 'same person', prompt, flags=re.IGNORECASE)
-    prompt = re.sub(r'\bKorean person\b', 'person', prompt, flags=re.IGNORECASE)
-    prompt = re.sub(r'\bKorean character\b', 'character', prompt, flags=re.IGNORECASE)
-    prompt = re.sub(r'\bEast Asian features?\b', 'features', prompt, flags=re.IGNORECASE)
-    prompt = re.sub(r'\bEast Asian facial features?\b', 'facial features', prompt, flags=re.IGNORECASE)
-    prompt = re.sub(r'\bEast Asian appearance\b', 'appearance', prompt, flags=re.IGNORECASE)
-    prompt = re.sub(r'\bAsian\b', '', prompt, flags=re.IGNORECASE)
-    prompt = re.sub(r'\bKorean\b', '', prompt, flags=re.IGNORECASE)
-
-    # 반복적인 "same" 제거 (한 번만 남김)
-    prompt = re.sub(r'(\bsame\b\s+){2,}', 'same ', prompt, flags=re.IGNORECASE)
 
     # 안전 프리픽스 추가
     safe_prefix = "safe for work, G-rated, family-friendly, professional quality, "
@@ -198,20 +180,17 @@ def setup_chrome_driver():
 
     service = Service(ChromeDriverManager().install())
 
-    # 테스트용 별도 포트 (기존 Chrome과 분리)
-    DEBUG_PORT = 9333
-
-    # 1단계: 기존 Chrome이 실행 중인지 확인
-    print(f"🔍 실행 중인 Chrome 찾는 중 (포트: {DEBUG_PORT})...", flush=True)
+    # 1단계: 실행 중인 Chrome의 디버깅 포트에 연결 시도
+    print("🔍 실행 중인 Chrome 찾는 중...", flush=True)
 
     try:
         # Chrome이 9222 포트에서 실행 중인지 확인
-        response = requests.get(f"http://127.0.0.1:{DEBUG_PORT}/json/version", timeout=2)
+        response = requests.get("http://127.0.0.1:9222/json/version", timeout=2)
         if response.status_code == 200:
-            print(f"✅ 실행 중인 Chrome 발견! (포트 {DEBUG_PORT})", flush=True)
+            print("✅ 실행 중인 Chrome 발견! (디버깅 포트 활성화)", flush=True)
 
             chrome_options = Options()
-            chrome_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{DEBUG_PORT}")
+            chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 
             driver = webdriver.Chrome(service=service, options=chrome_options)
             print("✅ 기존 Chrome에 연결 완료 (로그인 세션 유지)", flush=True)
@@ -225,7 +204,7 @@ def setup_chrome_driver():
 
     # 2단계: Chrome이 디버깅 모드로 실행되지 않음 → 자동으로 시작
     print("⚠️ Chrome이 디버깅 모드로 실행되지 않았습니다.", flush=True)
-    print(f"🚀 Chrome을 디버깅 모드로 자동 실행합니다... (포트: {DEBUG_PORT})", flush=True)
+    print("🚀 Chrome을 디버깅 모드로 자동 실행합니다...", flush=True)
 
     # Chrome 실행 경로 찾기
     chrome_paths = [
@@ -243,48 +222,28 @@ def setup_chrome_driver():
     if not chrome_exe:
         raise Exception("❌ Chrome 실행 파일을 찾을 수 없습니다.")
 
-    # 기존 Chrome 프로필 복사본 사용 (로그인 세션 유지)
+    # 별도 프로필 디렉토리 사용 (충돌 방지)
     import tempfile
-    import shutil
+    profile_dir = os.path.join(tempfile.gettempdir(), 'chrome_debug_profile')
 
-    # 원본 Chrome 프로필 경로
-    original_profile = os.path.expanduser(r"~\AppData\Local\Google\Chrome\User Data")
-    profile_dir = os.path.join(tempfile.gettempdir(), f'chrome_test_profile_{DEBUG_PORT}')
-
-    # 프로필이 없으면 기존 프로필에서 쿠키만 복사
-    if not os.path.exists(profile_dir):
-        print(f"📁 테스트용 프로필 생성 중...", flush=True)
-        os.makedirs(profile_dir, exist_ok=True)
-        # Default 폴더의 쿠키와 로그인 정보 복사
-        try:
-            src_default = os.path.join(original_profile, "Default")
-            dst_default = os.path.join(profile_dir, "Default")
-            if os.path.exists(src_default):
-                shutil.copytree(src_default, dst_default,
-                              ignore=shutil.ignore_patterns('Cache', 'Code Cache', 'GPUCache', 'Service Worker', 'blob_storage'),
-                              dirs_exist_ok=True)
-                print(f"✅ 로그인 세션 복사 완료", flush=True)
-        except Exception as e:
-            print(f"⚠️ 프로필 복사 실패: {e}", flush=True)
-
-    # Chrome을 디버깅 모드로 실행 (별도 포트)
+    # Chrome을 디버깅 모드로 실행
     subprocess.Popen([
         chrome_exe,
-        f"--remote-debugging-port={DEBUG_PORT}",
+        "--remote-debugging-port=9222",
         f"--user-data-dir={profile_dir}"
     ])
 
     print("⏳ Chrome 시작 대기 중...", flush=True)
     time.sleep(8)  # Chrome이 완전히 시작될 때까지 대기
 
-    # Chrome이 실제로 DEBUG_PORT에서 응답할 때까지 재시도
+    # Chrome이 실제로 9222 포트에서 응답할 때까지 재시도
     max_retries = 10
     for i in range(max_retries):
         try:
             import requests
-            response = requests.get(f"http://127.0.0.1:{DEBUG_PORT}/json/version", timeout=1)
+            response = requests.get("http://127.0.0.1:9222/json/version", timeout=1)
             if response.status_code == 200:
-                print(f"✅ Chrome 디버깅 포트({DEBUG_PORT}) 응답 확인!", flush=True)
+                print(f"✅ Chrome 디버깅 포트 응답 확인!", flush=True)
                 break
         except:
             pass
@@ -293,14 +252,14 @@ def setup_chrome_driver():
             print(f"⏳ 재시도 {i+1}/{max_retries}...", flush=True)
             time.sleep(2)
         else:
-            raise Exception(f"❌ Chrome 디버깅 포트({DEBUG_PORT}) 연결 실패")
+            raise Exception("❌ Chrome 디버깅 포트 연결 실패")
 
     # 다시 연결 시도
     chrome_options = Options()
-    chrome_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{DEBUG_PORT}")
+    chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
-    print(f"✅ 테스트용 Chrome 연결 완료! (포트: {DEBUG_PORT})", flush=True)
+    print("✅ Chrome 연결 완료!", flush=True)
 
     # 자동화 감지 우회
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -315,14 +274,6 @@ def generate_image_with_imagefx(driver, prompt):
     print(f"📝 프롬프트 길이: {len(prompt)}자", flush=True)
     print(f"📝 프롬프트 내용: {prompt}", flush=True)
     print("="*80, flush=True)
-
-    # 창 크기 최대화 (입력창이 보이도록)
-    try:
-        driver.maximize_window()
-        print("📐 창 크기 최대화 완료", flush=True)
-    except:
-        driver.set_window_size(1920, 1080)
-        print("📐 창 크기 1920x1080 설정", flush=True)
 
     driver.get('https://labs.google/fx/ko/tools/image-fx')
     print("⏳ ImageFX 페이지 로딩...", flush=True)
@@ -388,76 +339,30 @@ def generate_image_with_imagefx(driver, prompt):
         pass
 
     # 페이지 중앙 클릭하여 입력창 활성화 시도
-    print("🖱️ 입력창 찾아서 활성화 시도...", flush=True)
-
-    # 먼저 "입력" 탭 클릭 (설정 탭이 열려있을 수 있음)
+    print("🖱️ 페이지 클릭하여 입력창 활성화 시도...", flush=True)
     driver.execute_script("""
-        const tabs = document.querySelectorAll('button, [role="tab"]');
-        for (const tab of tabs) {
-            const text = (tab.innerText || '').trim();
-            if (text === '입력' || text === 'Input') {
-                tab.click();
-                console.log('Clicked 입력 tab');
-                break;
-            }
+        // 페이지 중앙 클릭
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // 중앙 요소 찾아서 클릭
+        const elem = document.elementFromPoint(centerX, centerY);
+        if (elem) {
+            elem.click();
         }
     """)
-    time.sleep(1)
+    time.sleep(2)
 
-    # 입력창(contenteditable div) 찾아서 클릭 및 포커스
-    input_focused = driver.execute_script("""
-        // contenteditable 요소 찾기
-        const editables = document.querySelectorAll('[contenteditable="true"]');
-        let targetInput = null;
-
-        for (const el of editables) {
-            // 보이는 요소만 선택
-            if (el.offsetParent !== null && el.offsetWidth > 100) {
-                targetInput = el;
-                break;
-            }
-        }
-
-        if (targetInput) {
-            // 포커스 및 전체 선택
-            targetInput.focus();
-            targetInput.click();
-
-            // 전체 선택 (기존 내용 대체용)
-            const selection = window.getSelection();
-            const range = document.createRange();
-            range.selectNodeContents(targetInput);
-            selection.removeAllRanges();
-            selection.addRange(range);
-
-            return {success: true, tag: targetInput.tagName, classes: targetInput.className, hadContent: targetInput.innerText.length > 0};
-        }
-
-        // fallback: 일반 텍스트 입력창
-        const textareas = document.querySelectorAll('textarea, input[type="text"]');
-        for (const el of textareas) {
-            if (el.offsetParent !== null) {
-                el.focus();
-                el.select();
-                return {success: true, tag: el.tagName, type: 'fallback'};
-            }
-        }
-
-        return {success: false};
-    """)
-
-    if input_focused and input_focused.get('success'):
-        print(f"✅ 입력창 포커스 완료: {input_focused}", flush=True)
-    else:
-        print("⚠️ 입력창을 찾지 못했습니다. 클릭으로 대체...", flush=True)
-        driver.execute_script("document.body.click();")
-
-    time.sleep(1)
-
-    # 클립보드를 이용한 직접 입력 시도
+    # 입력창을 찾는 대신, 클립보드를 이용한 직접 입력 시도
     try:
         print("📋 프롬프트를 클립보드에 복사하고 붙여넣기 시도...", flush=True)
         pyperclip.copy(prompt)
+        time.sleep(0.5)
+
+        # 페이지 중앙 클릭하여 포커스
+        driver.execute_script("document.body.click();")
         time.sleep(0.5)
 
         # Ctrl+V 붙여넣기
@@ -465,37 +370,6 @@ def generate_image_with_imagefx(driver, prompt):
         actions.key_down(Keys.CONTROL).send_keys('v').key_up(Keys.CONTROL).perform()
         time.sleep(1)
         print("✅ Ctrl+V 붙여넣기 완료", flush=True)
-
-        # 붙여넣기 확인
-        paste_check = driver.execute_script("""
-            const editables = document.querySelectorAll('[contenteditable="true"]');
-            for (const el of editables) {
-                if (el.offsetParent !== null && el.innerText && el.innerText.length > 50) {
-                    return {success: true, length: el.innerText.length, preview: el.innerText.substring(0, 100)};
-                }
-            }
-            return {success: false};
-        """)
-
-        if paste_check and paste_check.get('success'):
-            print(f"✅ 프롬프트 입력 확인: {paste_check.get('length')}자", flush=True)
-        else:
-            print("⚠️ 프롬프트가 입력창에 들어가지 않았습니다. 직접 입력 시도...", flush=True)
-            # JavaScript로 직접 입력
-            driver.execute_script("""
-                const editables = document.querySelectorAll('[contenteditable="true"]');
-                for (const el of editables) {
-                    if (el.offsetParent !== null && el.offsetWidth > 100) {
-                        el.focus();
-                        el.innerText = arguments[0];
-                        // input 이벤트 발생
-                        el.dispatchEvent(new Event('input', { bubbles: true }));
-                        break;
-                    }
-                }
-            """, prompt)
-            time.sleep(0.5)
-            print("✅ JavaScript 직접 입력 완료", flush=True)
 
         # 엔터 키 입력하여 생성 시작
         actions = ActionChains(driver)
@@ -507,7 +381,6 @@ def generate_image_with_imagefx(driver, prompt):
         # 생성 버튼 찾아서 클릭 (추가된 안정성 로직)
         print("🔍 생성 버튼 찾는 중...", flush=True)
         generate_clicked = driver.execute_script("""
-            // 1. 텍스트로 버튼 찾기
             const buttonTexts = ['Generate', 'Create', '생성', 'make', 'Go', '만들기', 'Remix'];
             for (const text of buttonTexts) {
                 const buttons = Array.from(document.querySelectorAll('button'));
@@ -522,52 +395,7 @@ def generate_image_with_imagefx(driver, prompt):
                     }
                 }
             }
-
-            // 2. 보라색/파란색 버튼 찾기 (아이콘만 있는 생성 버튼)
-            const allButtons = document.querySelectorAll('button');
-            for (const btn of allButtons) {
-                if (btn.offsetParent === null || btn.disabled) continue;
-
-                const style = window.getComputedStyle(btn);
-                const bgColor = style.backgroundColor;
-
-                // 보라색/파란색 계열 버튼 (ImageFX 생성 버튼)
-                if (bgColor.includes('rgb(103') || bgColor.includes('rgb(98') ||
-                    bgColor.includes('rgb(124') || bgColor.includes('rgb(139') ||
-                    bgColor.includes('103, 80') || bgColor.includes('98, 91')) {
-                    console.log('Found purple/blue button:', btn, bgColor);
-                    btn.click();
-                    return {success: true, method: 'by-color', bgColor: bgColor};
-                }
-            }
-
-            // 3. SVG 아이콘이 있는 버튼 (생성 버튼 아이콘)
-            for (const btn of allButtons) {
-                if (btn.offsetParent === null || btn.disabled) continue;
-                const svg = btn.querySelector('svg');
-                if (svg && btn.offsetWidth > 30 && btn.offsetWidth < 80) {
-                    // 입력창 근처에 있는 작은 버튼
-                    const rect = btn.getBoundingClientRect();
-                    if (rect.bottom > window.innerHeight * 0.7) {
-                        console.log('Found SVG button near input:', btn);
-                        btn.click();
-                        return {success: true, method: 'by-svg-icon'};
-                    }
-                }
-            }
-
-            // 4. aria-label로 찾기
-            const ariaLabels = ['generate', 'create', 'submit', 'send', '생성', '만들기'];
-            for (const label of ariaLabels) {
-                const btn = document.querySelector('button[aria-label*="' + label + '" i]');
-                if (btn && btn.offsetParent !== null && !btn.disabled) {
-                    console.log('Found button by aria-label:', btn);
-                    btn.click();
-                    return {success: true, method: 'by-aria-label-' + label};
-                }
-            }
-
-            return {success: false, allButtonsCount: allButtons.length};
+            return {success: false};
         """)
 
         if generate_clicked and generate_clicked.get('success'):
@@ -584,7 +412,6 @@ def generate_image_with_imagefx(driver, prompt):
     # 이미지 생성 대기
     print("⏳ 이미지 생성 대기 중... (최대 120초)", flush=True)
     image_generated = False
-    policy_violation = False
     for i in range(120):
         result = driver.execute_script("""
             const imgs = Array.from(document.querySelectorAll('img'));
@@ -595,96 +422,14 @@ def generate_image_with_imagefx(driver, prompt):
                 height: img.offsetHeight
             }));
             const text = document.body.innerText;
-            const textLower = text.toLowerCase();
-
-            // 토스트/스낵바 요소 감지 (ImageFX 정책 위반 시 나타남)
-            const toastSelectors = [
-                '[role="alert"]',
-                '[role="status"]',
-                '[aria-live="polite"]',
-                '[aria-live="assertive"]',
-                '.snackbar', '.toast', '.notification',
-                '[class*="snackbar"]', '[class*="toast"]', '[class*="notification"]',
-                '[class*="Snackbar"]', '[class*="Toast"]', '[class*="Notification"]',
-                'mwc-snackbar', 'mat-snack-bar-container',
-                '[class*="error"]', '[class*="Error"]',
-                '[class*="warning"]', '[class*="Warning"]'
-            ];
-
-            let toastElements = [];
-            let toastText = '';
-            toastSelectors.forEach(sel => {
-                try {
-                    const elements = document.querySelectorAll(sel);
-                    elements.forEach(el => {
-                        if (el.offsetParent !== null && el.innerText && el.innerText.trim()) {
-                            toastElements.push({
-                                selector: sel,
-                                text: el.innerText.substring(0, 200),
-                                visible: true
-                            });
-                            toastText += ' ' + el.innerText;
-                        }
-                    });
-                } catch(e) {}
-            });
-
-            const toastTextLower = toastText.toLowerCase();
-
-            // 정책 위반 키워드 (본문 + 토스트 모두 체크)
-            const policyKeywords = [
-                "can't create", "cannot create", "unable to generate",
-                "violates our content policy", "against our policies",
-                "inappropriate", "정책 위반", "생성할 수 없", "부적절한",
-                "I'm unable to", "I can't help", "couldn't generate",
-                "safety", "harmful", "not allowed", "blocked",
-                "만들 수 없습니다", "요청한 항목을 만들 수 없", "다른 프롬프트를 사용"
-            ];
-
-            let keywordMatches = [];
-            policyKeywords.forEach(kw => {
-                if (textLower.includes(kw.toLowerCase()) || toastTextLower.includes(kw.toLowerCase())) {
-                    keywordMatches.push(kw);
-                }
-            });
-
-            const policyViolation = keywordMatches.length > 0;
-            const hasToast = toastElements.length > 0;
-
             return {
                 hasLargeImage: largeImgs.length > 0,
                 largeCount: largeImgs.length,
                 totalCount: imgs.length,
                 generating: text.includes('Generating') || text.includes('생성 중') || text.includes('Loading'),
-                policyViolation: policyViolation,
-                hasToast: hasToast,
-                toastElements: toastElements,
-                toastText: toastText.substring(0, 300),
-                keywordMatches: keywordMatches,
-                sampleImages: allImgs.slice(0, 3),
-                bodyTextSample: text.substring(0, 200)
+                sampleImages: allImgs.slice(0, 3)
             };
         """)
-
-        # 토스트 감지 로그 (디버깅용)
-        if result.get('hasToast'):
-            print(f"🔔 토스트 감지됨 ({i+1}초): {result.get('toastText', '')[:100]}", flush=True)
-            if result.get('toastElements'):
-                for te in result.get('toastElements', [])[:3]:
-                    print(f"   - [{te.get('selector')}] {te.get('text', '')[:80]}", flush=True)
-
-        # 정책 위반 체크
-        if result.get('policyViolation'):
-            print(f"\n⚠️ 정책 위반 감지됨 ({i+1}초)", flush=True)
-            print(f"   매칭 키워드: {result.get('keywordMatches', [])}", flush=True)
-            print(f"   토스트 텍스트: {result.get('toastText', '')[:200]}", flush=True)
-            print(f"   본문 메시지: {result.get('bodyTextSample', '')}", flush=True)
-            policy_violation = True
-            # 정책 위반이어도 잠시 더 기다려봄 (가끔 늦게 생성되는 경우가 있음)
-            if i >= 10:  # 10초 이상 기다렸으면 종료
-                print(f"   ❌ 정책 위반으로 이미지 생성 실패", flush=True)
-                # 재시도를 위해 Exception 대신 policy_violation 플래그로 처리
-                break
 
         if result['hasLargeImage']:
             print(f"✅ 이미지 생성 완료! ({i+1}초) - 큰 이미지 {result['largeCount']}개 발견", flush=True)
@@ -715,9 +460,6 @@ def generate_image_with_imagefx(driver, prompt):
             print(f"📸 실패 스크린샷: {final_screenshot}", flush=True)
         except:
             pass
-        # 정책 위반인 경우 특별 처리 (재시도 가능)
-        if policy_violation:
-            return None, "POLICY_VIOLATION"
         raise Exception("❌ 이미지 생성 실패 - 120초 내에 이미지가 생성되지 않았습니다")
 
     time.sleep(3)
@@ -840,7 +582,7 @@ def generate_image_with_imagefx(driver, prompt):
     if new_files:
         latest_file = max(new_files, key=os.path.getctime)
         print(f"✅ 이미지 다운로드 확인: {os.path.basename(latest_file)}", flush=True)
-        return latest_file, "SUCCESS"
+        return latest_file
     else:
         raise Exception("❌ 다운로드된 이미지 파일을 찾을 수 없습니다 - Downloads 폴더에 새 파일이 없습니다")
 
@@ -850,56 +592,20 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
     print("2️⃣ Whisk - 피사체 이미지 업로드", flush=True)
     print("="*80, flush=True)
 
-    # Whisk 프로젝트 페이지로 이동
     driver.get('https://labs.google/fx/ko/tools/whisk/project')
     print("⏳ Whisk 페이지 로딩...", flush=True)
-
-    # 페이지 완전 로드 대기
-    for i in range(15):
-        ready = driver.execute_script("return document.readyState === 'complete'")
-        buttons_count = driver.execute_script("return document.querySelectorAll('button').length")
-        if ready and buttons_count > 5:
-            print(f"✅ Whisk 페이지 로드 완료 ({i+1}초, 버튼 {buttons_count}개)", flush=True)
-            break
-        time.sleep(1)
-    else:
-        print(f"⚠️ Whisk 페이지 로드 타임아웃, 계속 진행...", flush=True)
-
-    time.sleep(3)  # 페이지 안정화 대기
-
-    # "도구 열기" 버튼이 있으면 클릭 (랜딩 페이지인 경우)
-    open_tool_result = driver.execute_script("""
-        const elements = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-        for (const el of elements) {
-            const text = (el.textContent || '').trim();
-            if (text.includes('도구 열기') || text.includes('시작하기') ||
-                text.includes('새 프로젝트') || text === 'Open tool') {
-                el.click();
-                return {clicked: true, button: text};
-            }
-        }
-        return {clicked: false};
-    """)
-
-    if open_tool_result.get('clicked'):
-        print(f"🆕 버튼 클릭: {open_tool_result.get('button')}", flush=True)
-        time.sleep(5)  # 새 페이지 로딩 대기
-
-    time.sleep(2)  # 추가 안정화 대기
+    time.sleep(5)
 
     # ✅ 비율 선택 (16:9 또는 9:16)
+    # 9:16 비율인 경우 "가로 모드(Horizontal)" 버튼 선택
     if aspect_ratio:
         print(f"📐 비율 선택 시도: {aspect_ratio}", flush=True)
 
-        # 비율에 따라 버튼 텍스트 매핑
-        # Whisk UI: 정사각형(1:1), 세로 모드(9:16), 가로 모드(16:9)
+        # 9:16일 때는 "가로 모드" 또는 "Horizontal" 선택
         button_to_click = aspect_ratio
         if aspect_ratio == '9:16':
-            button_to_click = '세로 모드'  # 9:16 = 세로 모드
-            print(f"   → 9:16 비율: '세로 모드' 선택", flush=True)
-        elif aspect_ratio == '16:9':
-            button_to_click = '가로 모드'  # 16:9 = 가로 모드
-            print(f"   → 16:9 비율: '가로 모드' 선택", flush=True)
+            button_to_click = 'Horizontal'  # 9:16 비율에서 가로 모드 선택
+            print(f"   → 9:16 비율: '가로 모드(Horizontal)' 선택", flush=True)
 
         # Step 1: 비율 선택 드롭다운/버튼 먼저 열기
         menu_open_result = driver.execute_script("""
@@ -937,41 +643,38 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
         else:
             print(f"⚠️ 비율 선택 메뉴를 찾지 못함", flush=True)
 
-        # Step 2: 원하는 옵션 선택 (세로 모드/가로 모드 또는 9:16/16:9)
+        # Step 2: 원하는 옵션 선택
         aspect_ratio_result = driver.execute_script("""
-            const buttonText = arguments[0];  // '세로 모드' 또는 '가로 모드'
-            const ratioText = arguments[1];   // '9:16' 또는 '16:9'
+            const buttonText = arguments[0];  // ✅ aspect_ratio 대신 button_to_click 사용
 
-            // 모든 버튼 찾기
+            // button 요소만 찾기 (더 정확함)
             const allButtons = Array.from(document.querySelectorAll('button'));
 
-            // 디버깅: 현재 페이지의 모든 버튼 텍스트 출력
-            const allButtonTexts = allButtons.map(btn => btn.textContent.trim().replace(/\\s+/g, ' ').substring(0, 50));
-            console.log('📋 모든 버튼 텍스트:', allButtonTexts);
-
-            // 비율 관련 버튼 찾기 (includes 방식으로 변경)
+            // 정확히 buttonText 텍스트만 가진 버튼 찾기
             const targetButtons = allButtons.filter(button => {
-                const text = button.textContent.trim().replace(/\\s+/g, ' ');
-                // "세로 모드" 또는 "9:16"을 포함하는 버튼
-                return text.includes(buttonText) || text.includes(ratioText);
+                const text = button.textContent.trim();
+                return text === buttonText;
             });
 
-            console.log('🎯 매칭된 버튼들:', targetButtons.length, '개');
-            targetButtons.forEach((btn, i) => {
-                console.log(`   [${i}] ${btn.textContent.trim().replace(/\\s+/g, ' ').substring(0, 50)}`);
-            });
+            // 디버깅: 찾은 모든 버튼 출력
+            console.log('🔍 찾은 버튼들:', targetButtons.length, '개');
+            const foundTexts = targetButtons.map(btn => btn.textContent.trim());
+            console.log('   텍스트들:', foundTexts);
 
             if (targetButtons.length > 0) {
                 // 첫 번째 매칭된 버튼 클릭
                 const targetButton = targetButtons[0];
-                console.log('✅ 클릭할 버튼:', targetButton.textContent.trim().replace(/\\s+/g, ' '));
+
+                console.log('🎯 선택된 버튼:', targetButton.tagName, targetButton.textContent.trim());
+                console.log('   클래스:', targetButton.className);
                 targetButton.click();
 
                 return {
                     success: true,
                     element: targetButton.tagName,
-                    text: targetButton.textContent.trim().replace(/\\s+/g, ' ').substring(0, 50),
-                    allButtonTexts: allButtonTexts.slice(0, 20)  // 처음 20개만
+                    text: targetButton.textContent.trim(),
+                    className: targetButton.className,
+                    allFoundTexts: foundTexts
                 };
             }
 
@@ -980,8 +683,7 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
                 const ariaLabel = button.getAttribute('aria-label') || '';
                 const title = button.getAttribute('title') || '';
 
-                if (ariaLabel.includes(buttonText) || ariaLabel.includes(ratioText) ||
-                    title.includes(buttonText) || title.includes(ratioText)) {
+                if (ariaLabel.includes(buttonText) || title.includes(buttonText)) {
                     button.click();
                     return {
                         success: true,
@@ -991,28 +693,20 @@ def upload_image_to_whisk(driver, image_path, aspect_ratio=None):
                 }
             }
 
-            return {
-                success: false,
-                totalButtons: allButtons.length,
-                allButtonTexts: allButtonTexts.slice(0, 20)
-            };
-        """, button_to_click, aspect_ratio)
+            return {success: false, totalButtons: allButtons.length};
+        """, button_to_click)
 
         if aspect_ratio_result.get('success'):
             print(f"✅ 비율 선택 성공: {aspect_ratio}", flush=True)
             print(f"   요소: {aspect_ratio_result.get('element')}", flush=True)
+            if aspect_ratio_result.get('role'):
+                print(f"   역할: {aspect_ratio_result.get('role')}", flush=True)
             if aspect_ratio_result.get('text'):
                 print(f"   텍스트: {aspect_ratio_result.get('text')}", flush=True)
             time.sleep(2)  # 비율 선택 후 대기
         else:
-            print(f"⚠️ 비율 버튼을 찾지 못함: {button_to_click} (또는 {aspect_ratio})", flush=True)
-            print(f"   총 버튼 개수: {aspect_ratio_result.get('totalButtons', 0)}", flush=True)
-            # 디버깅: 발견된 버튼 텍스트 출력
-            all_texts = aspect_ratio_result.get('allButtonTexts', [])
-            if all_texts:
-                print(f"   발견된 버튼들:", flush=True)
-                for txt in all_texts[:10]:  # 처음 10개만 출력
-                    print(f"      - {txt}", flush=True)
+            print(f"⚠️ 비율 버튼을 찾지 못함: {aspect_ratio}", flush=True)
+            print(f"   페이지 요소 개수: {aspect_ratio_result.get('totalElements', 0)}", flush=True)
 
     abs_path = os.path.abspath(image_path)
     print(f"🔍 파일 업로드 시도: {os.path.basename(abs_path)}", flush=True)
@@ -1375,7 +1069,6 @@ def input_prompt_to_whisk(driver, prompt, wait_time=WebDriverWait, is_first=Fals
         print(f"❌ 입력 오류: {e}", flush=True)
         return False
 
-
 def download_images(driver, images, output_folder, scenes):
     """주어진 이미지 리스트를 지정된 폴더에 다운로드합니다."""
     print("\n" + "="*80, flush=True)
@@ -1648,41 +1341,8 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             print(f"✅ 프롬프트 읽기 성공 (출처: {prompt_source})", flush=True)
             print(f"   내용: {first_prompt[:100]}{'...' if len(first_prompt) > 100 else ''}\n", flush=True)
 
-            # ImageFX로 첫 이미지 생성 (정책 위반 시 최대 2회 재시도)
-            max_retries = 3  # 최초 1회 + 재시도 2회
-            current_prompt = first_prompt
-            image_path = None
-
-            for retry in range(max_retries):
-                if retry > 0:
-                    print(f"\n🔄 정책 위반으로 인한 재시도 {retry}/2", flush=True)
-                    # 프롬프트 안전화 (정책 우회)
-                    current_prompt = sanitize_prompt_for_google(current_prompt)
-                    print(f"   🛡️ 안전화된 프롬프트: {current_prompt[:100]}...", flush=True)
-
-                result = generate_image_with_imagefx(driver, current_prompt)
-
-                # 튜플 반환 처리
-                if isinstance(result, tuple):
-                    image_path, status = result
-                    if status == "SUCCESS":
-                        print(f"✅ ImageFX 이미지 생성 성공!", flush=True)
-                        break
-                    elif status == "POLICY_VIOLATION":
-                        print(f"⚠️ 정책 위반 감지됨", flush=True)
-                        if retry < max_retries - 1:
-                            print(f"   → 프롬프트를 수정하여 재시도합니다...", flush=True)
-                            time.sleep(3)
-                            continue
-                        else:
-                            raise Exception("❌ ImageFX 정책 위반: 최대 재시도 횟수(2회) 초과")
-                else:
-                    # 이전 버전 호환 (단일 값 반환)
-                    image_path = result
-                    break
-
-            if not image_path:
-                raise Exception("❌ ImageFX 이미지 생성 실패")
+            # ImageFX로 첫 이미지 생성
+            image_path = generate_image_with_imagefx(driver, first_prompt)
 
             # Whisk에 업로드 (aspect_ratio 전달)
             upload_image_to_whisk(driver, image_path, aspect_ratio)
@@ -1917,12 +1577,9 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                         print(f"   ❌ 최대 재시도 횟수 초과, 다음 씬으로 이동", flush=True)
                         break
 
-                # 입력 성공 - 정책 위반 체크 비활성화 (오탐지로 인한 이미지 생성 건너뛰기 방지)
-                # 정책 위반 체크는 나중에 이미지 생성 대기 중에 수행
+                # 입력 성공
                 print(f"✅ {scene_number} 입력 완료", flush=True)
                 break  # 성공하면 재시도 루프 탈출
-
-                # 정책 위반 체크는 비활성화 (오탐지 문제 - ImageFX 대기 루프에서 처리)
             
             # 타이밍 제어 - 각 프롬프트 제출 후 충분한 대기 시간 확보
             if i < len(scenes) - 1:  # 마지막 씬이 아니면
@@ -1995,16 +1652,12 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                     naturalHeight: img.naturalHeight
                 }));
 
-                // 정책 위반 감지 완전 비활성화 - 오탐지로 인해 이미지 생성이 불가능
-                const policyViolation = false; // 항상 false 반환
-
                 return {
                     generating: text.includes('Generating') || text.includes('생성 중') || text.includes('Loading') || text.includes('처리'),
-                    policyViolation: policyViolation,  // 항상 false
+                    policyViolation: text.includes('content policy') || text.includes('정책') || text.includes('policy') || text.includes('inappropriate'),
                     imageCount: whiskImgs.length,
                     allImagesCount: imgs.length,
-                    sampleImages: allImgs.slice(0, 5),
-                    bodyTextSample: text.substring(0, 200)
+                    sampleImages: allImgs.slice(0, 5)
                 };
             """)
 
@@ -2013,18 +1666,11 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                 print(f"\n⚠️ 정책 위반 감지됨 ({i}초)", flush=True)
                 print(f"   일부 이미지가 정책 위반으로 생성되지 않았을 수 있습니다", flush=True)
                 print(f"   생성된 이미지: {result['imageCount']}개", flush=True)
-                print(f"   페이지 텍스트 샘플: {result.get('bodyTextSample', '')}",flush=True)
                 # 정책 위반이 있어도 생성된 이미지가 있으면 계속 진행
                 if result['imageCount'] > 0:
                     print(f"   ✅ {result['imageCount']}개 이미지는 정상 생성됨, 계속 진행", flush=True)
                     time.sleep(5)  # 추가 대기
                     break
-                else:
-                    # 이미지가 하나도 없고 정책 위반이면 경고
-                    print(f"   ❌ 생성된 이미지가 없습니다. 정책 위반으로 생성 실패한 것으로 보입니다.", flush=True)
-                    if i >= 30:  # 30초 대기 후에도 이미지 없으면 조기 종료
-                        print(f"   ⚠️ 30초 대기 후에도 이미지가 없어 중단합니다.", flush=True)
-                        break
 
             # 모든 씬의 이미지가 생성될 때까지 대기
             # Whisk는 씬당 여러 배리에이션을 생성할 수 있으므로, 최소 씬 개수만큼만 확인
@@ -2067,8 +1713,10 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         except Exception as e:
             print(f"⚠️ 스크린샷 저장 실패: {e}", flush=True)
 
-        # 백업 로직 제거 - 새 파일이 자동으로 기존 파일을 덮어씀
-        print("ℹ️ 백업 없이 새 이미지로 직접 교체합니다.", flush=True)
+        # ⚠️ 백업 로직 비활성화
+        # 이유: 크롤링 실패 시 기존 이미지가 백업으로 옮겨져서 사라지는 문제 방지
+        # 재크롤링이 필요하면 수동으로 백업하거나, 성공 후에만 백업하도록 수정 필요
+        print("ℹ️ 기존 파일 백업 건너뜀 (크롤링 성공 후 수동 백업 권장)\n", flush=True)
         
         # 페이지의 모든 이미지 찾기 (blob 포함)
         # ✅ Whisk의 결과 이미지를 정확하게 타겟팅 - 모든 이미지 수집 (순서 보존)
@@ -2201,7 +1849,6 @@ if __name__ == '__main__':
     parser.add_argument('scenes_file', help='씬 데이터 JSON 파일')
     parser.add_argument('--use-imagefx', action='store_true', help='ImageFX로 첫 이미지 생성')
     parser.add_argument('--output-dir', help='이미지를 저장할 기본 디렉토리 (지정하지 않으면 scenes_file 경로 기준)')
-    parser.add_argument('--images-per-prompt', type=int, default=1, help='프롬프트당 생성할 이미지 개수 (기본: 1)')
 
     args = parser.parse_args()
     print(f"--- ARGS: {args} ---", flush=True)

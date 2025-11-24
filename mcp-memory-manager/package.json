@@ -1,0 +1,22 @@
+{
+  "name": "mcp-memory-manager",
+  "version": "1.0.0",
+  "description": "Memory & Pattern Analysis MCP - 대화 기억, 패턴 분석, 문서 자동 업데이트",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "better-sqlite3": "^9.4.3",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0"
+  }
+}

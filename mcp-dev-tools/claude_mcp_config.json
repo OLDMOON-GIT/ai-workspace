@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "dev-tools": {
+      "command": "node",
+      "args": ["C:\\Users\\oldmoon\\workspace\\mcp-dev-tools\\dist\\index.js"],
+      "env": {}
+    }
+  }
+}

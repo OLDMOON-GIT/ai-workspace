@@ -90,7 +90,7 @@ if (fs.existsSync(productPath)) {
   const productContent = fs.readFileSync(productPath, 'utf-8');
 
   const productChecks = {
-    '씬 3 CTA': productContent.includes('씬 3') && productContent.includes('상품 링크는 댓글에 있습니다'),
+    '씬 3 CTA': productContent.includes('씬 3') && productContent.includes('상품 링크는 설명에 있습니다'),
     '구독과 좋아요': productContent.includes('구독과 좋아요 부탁드립니다'),
     'scene_03_cta': productContent.includes('scene_03_cta'),
   };

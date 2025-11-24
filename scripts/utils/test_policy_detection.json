@@ -1,0 +1,24 @@
+{
+  "scenes": [
+    {
+      "scene_id": "scene_02_solution",
+      "scene_name": "해결/기능 - 9초 설득",
+      "duration_seconds": 9,
+      "word_count": 150,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic product solution reveal, camera continues previous movement as the SAME KOREAN PERSON from previous scenes now wears the NEW Vian touch ski gloves with Korean hands clearly visible, seamless transition as same Korean person's hands with East Asian skin tone come into frame wearing the solution product, close-up of Korean hands in new gloves smoothly operating smartphone touch screen without removing gloves, touchscreen fingertips working perfectly to check messages, warm and protected, same vertical framing maintaining Korean character consistency, lighting transforms from cold problem atmosphere to warm satisfied solution with natural winter sunlight reflecting off the snow, camera orbits 180 degrees around same Korean person's hands and product revealing all angles and grip features while maintaining continuous story with same Korean character, convincing and satisfying mood as solution unfolds on same Korean person, shot on 35mm film with consistent bokeh character, same Korean person's satisfied expression with East Asian features gradually visible as camera pulls slightly back, vibrant yet natural winter color palette, camera movement mirrors same Korean person's hand interaction building tactile connection, same ski resort backdrop visible confirming location continuity",
+      "narration": "이제 벗지 말고 바로 터치하세요. 섬세한 전도성 소재로 스마트폰 조작은 자유롭게, 두툼한 보온 소재로 따뜻함은 강력하게 지켜드립니다."
+    },
+    {
+      "scene_id": "scene_03_cta",
+      "scene_name": "행동유도 + CTA - 9초 구매욕구",
+      "duration_seconds": 9,
+      "word_count": 150,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic emotional finale, camera gracefully pulls back from previous hands-on-product moment revealing the SAME KOREAN PERSON from all previous scenes now completely satisfied with East Asian facial features clearly visible, holding ski poles and giving a thumbs up or waving with gloved hands, smiling genuinely, same Korean person in full frame showing complete lifestyle transformation, vertical composition widens from hands to full upper body of same Korean character with East Asian appearance, product beautifully integrated into winter sports routine, same ski jacket throughout entire video confirming continuity, natural ski resort scenery, same snowy mountain location visible throughout entire video journey, lighting reaches golden hour perfection with warm winter sunset glow suggesting comfort and satisfaction, slow crane movement upward and back revealing same Korean person's complete happy moment, same Korean character's face now fully visible with East Asian features showing genuine satisfaction with product, same mountain backdrop establishing consistent location throughout all 4 scenes, desirable and rewarding mood crescendos as we see same Korean person's journey complete, shot on 35mm film with final bokeh blooming beautifully around same Korean person, depth of field creates dreamy separation while maintaining Korean character focus, premium color palette with warm winter sunset tones, final frame holds on same Korean person wearing product with satisfied smile as emotional anchor",
+      "narration": "즐거운 겨울 스포츠, 손끝까지 따뜻하고 편리하게 즐겨보세요. 상품 링크는 설명에 있습니다. 구독과 좋아요 부탁드립니다."
+    }
+  ],
+  "metadata": {
+    "format": "shortform",
+    "aspect_ratio": "9:16"
+  }
+}
