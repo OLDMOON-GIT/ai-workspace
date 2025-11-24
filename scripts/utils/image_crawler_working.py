@@ -14,6 +14,7 @@ import os
 import glob
 import argparse
 import datetime
+import shutil
 
 # Windows 인코딩 문제 해결
 if sys.platform == 'win32':
@@ -30,6 +31,65 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 import re
+
+# stdout을 파일과 콘솔에 동시 출력하는 Tee 클래스
+class Tee:
+    """stdout/stderr를 파일과 콘솔에 동시에 출력"""
+    def __init__(self, original_stream, log_file):
+        self.original_stream = original_stream
+        self.log_file = log_file
+
+    def write(self, data):
+        self.original_stream.write(data)
+        self.original_stream.flush()
+        if self.log_file:
+            try:
+                self.log_file.write(data)
+                self.log_file.flush()
+            except:
+                pass
+
+    def flush(self):
+        self.original_stream.flush()
+        if self.log_file:
+            try:
+                self.log_file.flush()
+            except:
+                pass
+
+def setup_logging(output_folder):
+    """로그 파일 설정 - stdout/stderr를 파일에도 기록"""
+    if not output_folder:
+        return None
+
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_path = os.path.join(output_folder, f'image_crawl_{timestamp}.log')
+        log_file = open(log_path, 'w', encoding='utf-8')
+
+        # 헤더 작성
+        header = f"""{'='*80}
+📋 이미지 크롤링 로그
+{'='*80}
+시작 시간: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+출력 폴더: {output_folder}
+로그 파일: {log_path}
+{'='*80}
+
+"""
+        log_file.write(header)
+        log_file.flush()
+        print(f"📋 로그 파일 생성: {log_path}", flush=True)
+
+        # stdout과 stderr를 Tee로 리다이렉트
+        sys.stdout = Tee(sys.stdout, log_file)
+        sys.stderr = Tee(sys.stderr, log_file)
+
+        return log_file
+    except Exception as e:
+        print(f"⚠️ 로그 파일 생성 실패: {e}", flush=True)
+        return None
 
 def sanitize_prompt_for_google(prompt):
     """
@@ -1010,6 +1070,7 @@ def input_prompt_to_whisk(driver, prompt, wait_time=WebDriverWait, is_first=Fals
         print(f"❌ 입력 오류: {e}", flush=True)
         return False
 
+
 def download_images(driver, images, output_folder, scenes):
     """주어진 이미지 리스트를 지정된 폴더에 다운로드합니다."""
     print("\n" + "="*80, flush=True)
@@ -1083,7 +1144,9 @@ def download_images(driver, images, output_folder, scenes):
 
         img_list = scene_images[scene_idx]
         scene = scenes[scene_idx]
-        scene_number = scene.get('scene_number') or scene.get('scene_id') or f"scene_{str(scene_idx).zfill(2)}"
+        scene_number = scene.get('scene_number') or scene.get('scene_id') or f"scene_{str(scene_idx+1).zfill(2)}"
+
+        # ✅ scene_number 정제 (파일명으로 사용 가능하게)
         scene_number_clean = str(scene_number).replace('/', '_').replace('\\', '_').replace(':', '_')
 
         # ✅ 저장 전략:
@@ -1116,7 +1179,7 @@ def download_images(driver, images, output_folder, scenes):
                 if base64_data and base64_data.startswith('data:image'):
                     header, base64_str = base64_data.split(',', 1)
                     ext = '.' + header.split(';')[0].split('/')[-1] if 'image' in header else '.png'
-                    output_path = os.path.join(output_folder, f"{filename_base}{ext}")
+                    output_path = os.path.join(output_folder, f"{scene_number_clean}{ext}")
 
                     # ✅ 폴더 존재 확인
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -1140,7 +1203,7 @@ def download_images(driver, images, output_folder, scenes):
                 ext = '.jpg'
                 if 'png' in img_src.lower(): ext = '.png'
                 elif 'webp' in img_src.lower(): ext = '.webp'
-                output_path = os.path.join(output_folder, f"{filename_base}{ext}")
+                output_path = os.path.join(output_folder, f"{scene_number_clean}{ext}")
 
                 # ✅ 폴더 존재 확인
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -1186,6 +1249,9 @@ def download_images(driver, images, output_folder, scenes):
 
 def main(scenes_json_file, use_imagefx=False, output_dir=None):
     """메인 실행 함수"""
+    # 로그 파일 설정 (output_dir이 있으면 로그 파일 생성)
+    log_file = setup_logging(output_dir)
+
     print("=" * 80, flush=True)
     if use_imagefx:
         print("🚀 ImageFX + Whisk 자동화 시작", flush=True)
@@ -1588,13 +1654,51 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
                     naturalHeight: img.naturalHeight
                 }));
 
+                // 정책 위반 감지 개선: 구체적인 위반 메시지만 감지
+                const bodyText = text.toLowerCase();
+                const policyViolation = (bodyText.includes('content policy') && bodyText.includes('violat')) ||
+                                       (bodyText.includes('정책') && bodyText.includes('위반')) ||
+                                       bodyText.includes('policy violation') ||
+                                       bodyText.includes('inappropriate content') ||
+                                       bodyText.includes('against our policies') ||
+                                       bodyText.includes('정책 위반') ||
+                                       bodyText.includes('not allowed to generate') ||
+                                       bodyText.includes('cannot generate this type') ||
+                                       bodyText.includes('생성할 수 없는 콘텐츠') ||
+                                       text.includes("I can't help with creating") ||
+                                       text.includes("I can't generate that type");
+
+                // 에러 메시지나 경고 요소 확인
+                const errorElements = document.querySelectorAll('[role="alert"], .error, .warning, [class*="error"], [class*="warning"]');
+                const hasErrorElement = errorElements.length > 0;
+
                 return {
                     generating: text.includes('Generating') || text.includes('생성 중') || text.includes('Loading') || text.includes('처리'),
+                    policyViolation: policyViolation || hasErrorElement,
                     imageCount: whiskImgs.length,
                     allImagesCount: imgs.length,
-                    sampleImages: allImgs.slice(0, 5)
+                    sampleImages: allImgs.slice(0, 5),
+                    bodyTextSample: text.substring(0, 200)
                 };
             """)
+
+            # 정책 위반 감지
+            if result.get('policyViolation'):
+                print(f"\n⚠️ 정책 위반 감지됨 ({i}초)", flush=True)
+                print(f"   일부 이미지가 정책 위반으로 생성되지 않았을 수 있습니다", flush=True)
+                print(f"   생성된 이미지: {result['imageCount']}개", flush=True)
+                print(f"   페이지 텍스트 샘플: {result.get('bodyTextSample', '')}",flush=True)
+                # 정책 위반이 있어도 생성된 이미지가 있으면 계속 진행
+                if result['imageCount'] > 0:
+                    print(f"   ✅ {result['imageCount']}개 이미지는 정상 생성됨, 계속 진행", flush=True)
+                    time.sleep(5)  # 추가 대기
+                    break
+                else:
+                    # 이미지가 하나도 없고 정책 위반이면 경고
+                    print(f"   ❌ 생성된 이미지가 없습니다. 정책 위반으로 생성 실패한 것으로 보입니다.", flush=True)
+                    if i >= 30:  # 30초 대기 후에도 이미지 없으면 조기 종료
+                        print(f"   ⚠️ 30초 대기 후에도 이미지가 없어 중단합니다.", flush=True)
+                        break
 
             # 모든 씬의 이미지가 생성될 때까지 대기
             # Whisk는 씬당 여러 배리에이션을 생성할 수 있으므로, 최소 씬 개수만큼만 확인
@@ -1637,44 +1741,32 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         except Exception as e:
             print(f"⚠️ 스크린샷 저장 실패: {e}", flush=True)
 
-        # 기존 이미지/영상 파일을 backup 폴더로 이동
-        backup_folder = os.path.join(output_folder, 'backup')
-        backup_files = []
+        # ✅ 백업 로직: 크롤링 전에 기존 파일들을 백업 (옵션)
+        # 백업 폴더를 별도로 생성하여 기존 파일 보존
+        backup_folder_path = None
+        if os.path.exists(output_folder):
+            existing_images = glob.glob(os.path.join(output_folder, "scene_*.jpeg"))
+            existing_images.extend(glob.glob(os.path.join(output_folder, "scene_*.jpg")))
+            existing_images.extend(glob.glob(os.path.join(output_folder, "scene_*.png")))
 
-        # 백업 대상: 이미지 파일 (scene_*.jpg, scene_*.jpeg, scene_*.png, scene_*.webp)
-        # 백업 대상: 영상 파일 (*.mp4, *.avi, *.mov)
-        backup_patterns = [
-            'scene_*.jpg', 'scene_*.jpeg', 'scene_*.png', 'scene_*.webp',
-            '*.mp4', '*.avi', '*.mov'
-        ]
+            if existing_images:
+                print(f"📦 기존 파일 백업 중... ({len(existing_images)}개)", flush=True)
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_folder_path = os.path.join(output_folder, "backup", f"backup_{timestamp}")
+                os.makedirs(backup_folder_path, exist_ok=True)
 
-        for pattern in backup_patterns:
-            files = glob.glob(os.path.join(output_folder, pattern))
-            backup_files.extend(files)
-
-        if backup_files:
-            os.makedirs(backup_folder, exist_ok=True)
-            print(f"\n📦 기존 파일 백업 중... ({len(backup_files)}개)", flush=True)
-            import shutil
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-            for file_path in backup_files:
-                filename = os.path.basename(file_path)
-                # 타임스탬프 추가하여 백업
-                name, ext = os.path.splitext(filename)
-                backup_filename = f"{name}_{timestamp}{ext}"
-                backup_path = os.path.join(backup_folder, backup_filename)
-
-                try:
-                    shutil.move(file_path, backup_path)
+                for image_path in existing_images:
+                    filename = os.path.basename(image_path)
+                    # 파일명에 타임스탬프 추가하여 백업
+                    base_name, ext = os.path.splitext(filename)
+                    backup_filename = f"{base_name}_{timestamp}{ext}"
+                    backup_path = os.path.join(backup_folder_path, backup_filename)
+                    shutil.copy2(image_path, backup_path)
                     print(f"   ✅ {filename} → backup/{backup_filename}", flush=True)
-                except Exception as e:
-                    print(f"   ⚠️ {filename} 백업 실패: {e}", flush=True)
 
-            print(f"✅ 백업 완료: {backup_folder}\n", flush=True)
-        else:
-            print("ℹ️ 백업할 기존 파일 없음\n", flush=True)
+                print(f"✅ 백업 완료: {backup_folder_path}", flush=True)
+            else:
+                print("ℹ️ 백업할 기존 이미지가 없습니다.", flush=True)
         
         # 페이지의 모든 이미지 찾기 (blob 포함)
         # ✅ Whisk의 결과 이미지를 정확하게 타겟팅 - 모든 이미지 수집 (순서 보존)
@@ -1728,8 +1820,14 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
         elif downloaded_count < expected_count:
             print(f"\n⚠️ 경고: {downloaded_count}/{expected_count}개만 저장됨 (부분 성공)", flush=True)
             print(f"   {expected_count - downloaded_count}개 씬에 대해 재시도가 필요합니다", flush=True)
+            # 부분 성공 시 백업 정보만 표시 (원본 파일은 보존)
+            if downloaded_count > 0 and 'backup_folder_path' in locals() and backup_folder_path:
+                print(f"\n📁 이전 파일들은 백업 폴더에 보존됨: {backup_folder_path}", flush=True)
         else:
             print(f"\n✅ 검증 성공: {downloaded_count}개 이미지 저장됨 (목표: {expected_count}개)", flush=True)
+            # 완전 성공 시에도 백업 정보만 표시 (원본 파일은 보존)
+            if 'backup_folder_path' in locals() and backup_folder_path:
+                print(f"📁 이전 파일들은 백업 폴더에 보존됨: {backup_folder_path}", flush=True)
 
         print(f"\n{'='*80}", flush=True)
         print("🎉 전체 워크플로우 완료!", flush=True)
@@ -1792,11 +1890,22 @@ def main(scenes_json_file, use_imagefx=False, output_dir=None):
             print("\n✅ 작업 완료. 브라우저를 닫습니다.", flush=True)
             driver.quit()
 
+        # 로그 파일 닫기
+        if log_file:
+            try:
+                print(f"\n{'='*80}", flush=True)
+                print(f"📋 로그 종료 - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+                print(f"{'='*80}", flush=True)
+                log_file.close()
+            except:
+                pass
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='이미지 크롤링 자동화')
     parser.add_argument('scenes_file', help='씬 데이터 JSON 파일')
     parser.add_argument('--use-imagefx', action='store_true', help='ImageFX로 첫 이미지 생성')
     parser.add_argument('--output-dir', help='이미지를 저장할 기본 디렉토리 (지정하지 않으면 scenes_file 경로 기준)')
+    parser.add_argument('--images-per-prompt', type=int, default=1, help='프롬프트당 생성할 이미지 개수 (기본: 1)')
 
     args = parser.parse_args()
     print(f"--- ARGS: {args} ---", flush=True)
