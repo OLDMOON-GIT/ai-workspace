@@ -1,0 +1,28 @@
+{
+  "name": "mcp-debugger",
+  "version": "1.0.0",
+  "description": "Error Queue & Debugging MCP Server - 서버 에러를 큐에 저장하고 CLI 워커가 처리",
+  "main": "dist/index.js",
+  "bin": {
+    "error-worker": "./dist/cli.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "worker": "tsx src/cli.ts",
+    "monitor": "tsx src/monitor.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "better-sqlite3": "^9.4.3",
+    "chokidar": "^3.5.3",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0"
+  }
+}
