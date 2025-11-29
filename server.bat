@@ -166,8 +166,8 @@ REM ============================================================
 :RUN_SETUP_LOGIN
 set "TIMESTAMP_FILE=%~dp0.last_login_setup"
 
-REM 1시간(3600초) 이내인지 체크
-for /f %%i in ('powershell -NoProfile -Command "if (Test-Path '%TIMESTAMP_FILE%') { $diff = (Get-Date) - (Get-Item '%TIMESTAMP_FILE%').LastWriteTime; if ($diff.TotalSeconds -lt 3600) { 'SKIP' } else { 'RUN' } } else { 'RUN' }"') do set RESULT=%%i
+REM PowerShell 스크립트로 시간 체크
+for /f %%i in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0check_login_time.ps1" -TimestampFile "%TIMESTAMP_FILE%"') do set "RESULT=%%i"
 
 if "%RESULT%"=="SKIP" (
     echo [1/2] AI 로그인 설정 스킵 (1시간 이내 실행됨)
