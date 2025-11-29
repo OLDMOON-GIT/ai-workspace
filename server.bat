@@ -92,11 +92,12 @@ REM AI 로그인 설정 (크롬 브라우저 체크)
 echo [1/2] AI 로그인 설정 실행 중...
 cd /d "%~dp0trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
+cd /d "%~dp0"
 
 REM 서버 시작
 echo.
-echo 🔹 서버 시작 중...
-cd trend-video-frontend
+echo [2/2] 서버 시작 중...
+cd /d "%~dp0trend-video-frontend"
 start "Trend Video Frontend" cmd /k "npm run dev"
 cd ..
 
@@ -121,11 +122,12 @@ REM AI 로그인 설정 (크롬 브라우저 체크)
 echo [1/2] AI 로그인 설정 실행 중...
 cd /d "%~dp0trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
+cd /d "%~dp0"
 
-echo [2/2] Frontend 서버 시작...
-cd trend-video-frontend
+echo [2/2] Frontend 서버 시작 중...
+cd /d "%~dp0trend-video-frontend"
 start "Trend Video Frontend" cmd /k "npm run dev"
-cd ..
+cd /d "%~dp0"
 
 echo.
 echo ✅ 서버가 시작되었습니다!
