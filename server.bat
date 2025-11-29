@@ -51,7 +51,7 @@ git pull
 cd ..
 
 echo [1/2] AI 로그인 설정 실행 중...
-cd /d "C:\Users\oldmoon\workspace\trend-video-backend\src"
+cd /d "%~dp0trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
 
 echo.
@@ -90,7 +90,7 @@ timeout /t 2 /nobreak > nul
 
 REM AI 로그인 설정 (크롬 브라우저 체크)
 echo [1/2] AI 로그인 설정 실행 중...
-cd /d "C:\Users\oldmoon\workspace\trend-video-backend\src"
+cd /d "%~dp0trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
 
 REM 서버 시작
@@ -119,7 +119,7 @@ timeout /t 2 /nobreak > nul
 
 REM AI 로그인 설정 (크롬 브라우저 체크)
 echo [1/2] AI 로그인 설정 실행 중...
-cd /d "C:\Users\oldmoon\workspace\trend-video-backend\src"
+cd /d "%~dp0trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
 
 echo [2/2] Frontend 서버 시작...
