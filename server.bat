@@ -84,11 +84,11 @@ echo 🔹 기존 서버 종료 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
-REM AI 로그인 설정
+REM AI 로그인 설정 (크롬 브라우저 체크)
 echo.
-echo 🔹 AI 로그인 설정 실행 중...
+echo 🔹 AI 로그인 설정 실행 중... (크롬 브라우저가 열립니다)
 cd trend-video-backend\src
-python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok 2>nul
+python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
 cd ..\..
 
 REM 서버 시작
@@ -115,10 +115,10 @@ echo 🔹 기존 프로세스 정리 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
-REM AI 로그인 설정
-echo 🔹 AI 로그인 설정 실행 중...
+REM AI 로그인 설정 (크롬 브라우저 체크)
+echo 🔹 AI 로그인 설정 실행 중... (크롬 브라우저가 열립니다)
 cd trend-video-backend\src
-python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok 2>nul
+python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
 cd ..\..
 
 echo 🔹 Frontend 서버 시작...
