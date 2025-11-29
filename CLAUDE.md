@@ -102,6 +102,34 @@ try {
 // } catch (e) {}
 ```
 
+## 📝 코딩 컨벤션
+
+### 변수명/속성명 규칙
+**JS/TS 코드에서는 camelCase만 사용! snake_case는 DB 컬럼명에서만!**
+
+```typescript
+// ✅ SQL SELECT 시 AS alias로 camelCase 변환
+SELECT t.task_id as taskId,
+       t.user_id as userId,
+       c.prompt_format as promptFormat,
+       c.product_info as productInfo,
+       cs.tts_voice as ttsVoice
+
+// ✅ JS 코드에서 camelCase 사용
+const taskId = queue.taskId;
+const format = queue.promptFormat;
+
+// ❌ JS 코드에서 snake_case 사용 금지
+const taskId = queue.task_id;  // 금지!
+const format = queue.prompt_format;  // 금지!
+```
+
+### 속성명 통일
+- `productInfo` (O) / `productData` (X) / `product_data` (X)
+- `promptFormat` (O) / `prompt_format` (X)
+- `taskId` (O) / `task_id` (X)
+- `userId` (O) / `user_id` (X)
+
 ## 🚨🚨🚨 절대 삭제/수정 금지 규칙 🚨🚨🚨
 
 ### ⛔ 딥링크 관련 코드 수정 금지 ⛔
