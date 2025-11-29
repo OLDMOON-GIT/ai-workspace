@@ -164,16 +164,7 @@ REM ============================================================
 REM 서브루틴: AI 로그인 설정 (1시간 이내면 스킵)
 REM ============================================================
 :RUN_SETUP_LOGIN
-set "TIMESTAMP_FILE=%~dp0.last_login_setup"
-set "RESULT=RUN"
-
-REM PowerShell로 시간 체크 (1시간 이내면 SKIP)
-powershell -NoProfile -Command "$f='%TIMESTAMP_FILE%'; if ((Test-Path $f) -and (((Get-Date)-(Get-Item $f).LastWriteTime).TotalMinutes -lt 60)) { 'SKIP' } else { 'RUN' }" > "%TEMP%\login_check.txt" 2>&1
-set /p RESULT=<"%TEMP%\login_check.txt"
-
-REM RESULT가 비어있거나 에러면 RUN으로 설정
-if "%RESULT%"=="" set "RESULT=RUN"
-if "%RESULT:~0,3%"=="RUN" set "RESULT=RUN"
+for /f %%i in ('python "%~dp0check_login_time.py"') do set "RESULT=%%i"
 
 if "%RESULT%"=="SKIP" (
     echo [1/2] AI 로그인 설정 스킵 - 1시간 이내 실행됨
@@ -182,6 +173,6 @@ if "%RESULT%"=="SKIP" (
     cd /d "%~dp0trend-video-backend\src"
     python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
     cd /d "%~dp0"
-    echo %date% %time% > "%TIMESTAMP_FILE%"
+    echo %date% %time% > "%~dp0.last_login_setup"
 )
 goto :eof

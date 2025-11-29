@@ -226,10 +226,123 @@ git commit -m "..."  # → 자동으로 체크 실행
 
 ---
 
+## 커밋/푸시 규칙 (⛔ 필수!)
+
+### ✅ 커밋 규칙
+- **단일 구현당 커밋 필수!** - 여러 기능을 한 커밋에 몰아넣지 말 것
+- 작은 단위로 자주 커밋 (롤백 용이)
+- 커밋 메시지에 변경 사항 명확히 기술
+
+### ✅ 푸시 규칙
+- 기능이 **스테이블해지면 푸시**
+- **최소 하루 5번 이상 푸시** - 작업 손실 방지
+- 푸시 전 빌드/테스트 확인
+
+### 커밋 메시지 패턴
+```
+feat: 새 기능 추가
+fix: 버그 수정
+refactor: 리팩토링 (⚠️ 주석 필수!)
+chore: 설정/문서 변경
+```
+
+### 예시
+```bash
+# 좋은 예 - 단일 구현당 커밋
+git commit -m "fix: task 테이블 type → prompt_format 리팩토링"
+git commit -m "fix: content 테이블 use_claude_local → use_local_chrome"
+git commit -m "fix: task_queue INSERT OR REPLACE 적용"
+
+# 나쁜 예 - 여러 변경 한 커밋
+git commit -m "fix: 여러 버그 수정"  # ❌
+```
+
+---
+
+## 9. 리팩토링 보호 규칙 (⛔ 필독!)
+
+**왜 중요한가**: 2025-11-28 반복적인 버그 - 다른 CLI 세션이 리팩토링된 코드를 롤백해서 작업 무효화
+
+### ⛔ 절대 금지
+- 리팩토링된 코드를 **절대 롤백하지 말 것!**
+- `⚠️` 주석이 있는 코드는 **의도적으로 변경된 것**임
+- "no such column" 에러가 나면 **컬럼을 추가하지 말 것!**
+
+### ✅ 리팩토링 시 필수 작업
+1. **주석으로 단서 남기기**
+   ```typescript
+   // ⚠️ 리팩토링됨: old_column → new_column
+   // ⚠️ 삭제됨: product_url (product_info JSON에 포함)
+   // ⚠️ task_id가 PK - OR REPLACE 필수!
+   ```
+2. **CRITICAL_FEATURES.md 업데이트** - 리팩토링된 컬럼명 목록에 추가
+3. **sqlite.ts에 경고 주석 추가** - 마이그레이션에서 잘못된 컬럼 추가 방지
+
+### 리팩토링 주석 패턴
+```typescript
+// ⚠️ 리팩토링됨: [이유 설명]
+// ⚠️ 삭제됨: [컬럼명] - [대체 방법]
+// ⚠️ [테이블명]의 PK는 [컬럼명] 단독!
+```
+
+---
+
+## 10. "no such column" 에러 대응 가이드
+
+**왜 중요한가**: 2025-11-28 반복적인 버그 - "no such column" 에러가 나면 CLI가 컬럼을 추가해서 리팩토링 작업 무효화
+
+### ⛔ 절대 금지
+- `"no such column: XXX"` 에러가 발생하면 **컬럼을 추가하지 말 것!**
+- API 코드가 잘못된 컬럼명을 사용하고 있을 가능성이 높음
+
+### ✅ 올바른 대응
+1. 먼저 `schema-sqlite.sql` 확인
+2. API 코드의 컬럼명이 스키마와 일치하는지 검토
+3. 리팩토링된 컬럼명인지 확인
+
+### 리팩토링된 컬럼명 목록
+| 테이블 | 잘못된 컬럼 | 올바른 컬럼 | 비고 |
+|--------|-------------|-------------|------|
+| task | type | prompt_format | 타입 저장 |
+| task | product_url | (삭제됨) | product_info JSON에 포함 |
+| content | use_claude_local | use_local_chrome | 로컬 크롬 사용 여부 |
+| content | tts_voice | (삭제됨) | 더 이상 사용 안 함 |
+| content | type | (삭제됨) | 더 이상 사용 안 함 |
+| content | format | (삭제됨) | prompt_format 사용 |
+| content | task_id | (삭제됨) | 더 이상 사용 안 함 |
+| content | script_content | (삭제됨) | 더 이상 사용 안 함 |
+| coupang_product | id | coupang_id | PK |
+| youtube_channel_setting | id | setting_id | PK |
+
+### task_queue 테이블 주의사항
+- **PK: task_id 단독** (복합키 아님!)
+- 같은 task_id로 여러 type 행 불가
+- INSERT 시 반드시 `INSERT OR REPLACE` 사용
+- type 필드는 현재 진행 단계를 나타냄 (script → image → video → youtube)
+
+### 검증
+```bash
+# schema 확인
+sqlite3 data/database.sqlite "PRAGMA table_info(task);"
+
+# API 코드에서 잘못된 컬럼 사용 검색
+grep -rn "type = ?" src/app/api/  # task 테이블에서 사용하면 prompt_format으로 변경
+```
+
+### 관련 코드
+```typescript
+// src/lib/sqlite.ts:49-53
+// ⚠️ "no such column" 에러 발생 시:
+//   - 컬럼을 추가하지 마라! API 코드가 잘못된 컬럼명을 사용하는 것일 수 있음
+```
+
+---
+
 ## 버그 이력
 
 | 날짜 | 버그 | 원인 | 영향도 |
 |------|------|------|--------|
+| 2025-11-28 | 컬럼 추가로 리팩토링 무효화 | CLI가 에러보고 컬럼 추가 | 🟡 중간 (코드 불일치) |
 | 2025-01-12 | 데이터 손실 | DROP TABLE 사용 | 🔴 심각 (207 jobs, 333 contents 손실) |
 | 2025-01-12 | 상품정보 전달 안됨 | script.content 파싱 | 🟡 중간 (기능 작동 안함) |
 | 2025-01-12 | 영상 재생성 실패 | uploads 폴더 미지원 | 🟡 중간 |

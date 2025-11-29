@@ -29,11 +29,12 @@ import {
   ErrorItem
 } from './db.js';
 
-// 워커 ID 생성 (머신별 고유)
+// 워커 ID 생성 (프로세스별 고유)
 function getWorkerId(): string {
   const hostname = os.hostname();
   const username = os.userInfo().username;
-  return crypto.createHash('md5').update(`${hostname}-${username}`).digest('hex').substring(0, 8);
+  const pid = process.pid;
+  return crypto.createHash('md5').update(`${hostname}-${username}-${pid}`).digest('hex').substring(0, 8);
 }
 
 // 현재 시간
@@ -87,8 +88,12 @@ async function main() {
   const workerId = getWorkerId();
   const workerName = `worker-${workerId}`;
 
-  // 워커 등록
-  registerWorker(workerId, workerName);
+  // 워커를 등록해야 하는 명령어만 등록 (에러 처리 또는 장시간 실행)
+  const shouldRegisterWorker = ['에러탐지해', 'fetch', 'claim', 'get', '해결', 'resolve', 'done', '무시', 'ignore', 'skip', '리포트', 'report'].includes(command);
+
+  if (shouldRegisterWorker) {
+    registerWorker(workerId, workerName);
+  }
 
   switch (command) {
     case '에러탐지해':
@@ -299,11 +304,14 @@ async function main() {
 
     case '리포트':
     case 'report': {
-      const stats = getErrorStats();
-      const history = getResolutionHistory(20);
-      const workers = getActiveWorkers();
+      // 리포트 생성 함수
+      const generateReport = () => {
+        const stats = getErrorStats();
+        const history = getResolutionHistory(20);
+        const workers = getActiveWorkers();
 
-      console.log(`
+        console.clear();
+        console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                    📊 디버깅 리포트                          ║
 ║                    ${new Date().toLocaleString('ko-KR')}                        ║
@@ -318,29 +326,119 @@ async function main() {
 👥 워커 현황 (${workers.length}명 활성)
 `);
 
-      for (const worker of workers) {
-        const rate = worker.errors_processed > 0
-          ? Math.round((worker.errors_resolved / worker.errors_processed) * 100)
-          : 0;
-        console.log(`   ${worker.name}: ${worker.errors_resolved}/${worker.errors_processed} 해결 (${rate}%)`);
-      }
-
-      if (history.length > 0) {
-        console.log('\n📜 최근 처리 내역');
-        for (const record of history.slice(0, 5)) {
-          const icon = record.resolved ? '✅' : '⏭️';
-          const time = new Date(record.completed_at!).toLocaleTimeString('ko-KR');
-          console.log(`   ${icon} ${time} - #${record.error_id} ${record.error_type}`);
+        for (const worker of workers) {
+          const rate = worker.errors_processed > 0
+            ? Math.round((worker.errors_resolved / worker.errors_processed) * 100)
+            : 0;
+          console.log(`   ${worker.name}: ${worker.errors_resolved}/${worker.errors_processed} 해결 (${rate}%)`);
         }
+
+        if (history.length > 0) {
+          console.log('\n📜 최근 처리 내역');
+          for (const record of history.slice(0, 5)) {
+            const icon = record.resolved ? '✅' : '⏭️';
+            const time = new Date(record.completed_at!).toLocaleTimeString('ko-KR');
+            console.log(`   ${icon} ${time} - #${record.error_id} ${record.error_type}`);
+          }
+        }
+
+        // 가장 많은 에러 타입
+        if (Object.keys(stats.by_type).length > 0) {
+          const topError = Object.entries(stats.by_type)[0];
+          console.log(`\n⚠️  가장 많은 에러: ${topError[0]} (${topError[1]}건)`);
+        }
+
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🔄 5초마다 자동 업데이트 중... (Ctrl+C로 종료)');
+      };
+
+      // 초기 리포트 생성
+      generateReport();
+
+      // 5초마다 리포트 업데이트 (무한 루프)
+      setInterval(() => {
+        generateReport();
+      }, 5000);
+
+      // 프로세스가 계속 실행되도록 유지
+      await new Promise(() => {});
+      break;
+    }
+
+    case '추가':
+    case 'add':
+    case 'add-error': {
+      const errorType = args[1];
+      const errorMessage = args.slice(2).join(' ');
+
+      if (!errorType || !errorMessage) {
+        console.error('❌ 사용법: npm run worker -- 추가 <타입> <메시지>');
+        process.exit(1);
       }
 
-      // 가장 많은 에러 타입
-      if (Object.keys(stats.by_type).length > 0) {
-        const topError = Object.entries(stats.by_type)[0];
-        console.log(`\n⚠️  가장 많은 에러: ${topError[0]} (${topError[1]}건)`);
-      }
+      const { addErrorManually } = await import('./db.js');
+      const error = addErrorManually(errorType, errorMessage);
 
-      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      if (error) {
+        console.log(`✅ 에러 추가 완료: #${error.id}`);
+      } else {
+        console.log('⚠️  중복 에러 (이미 존재함)');
+      }
+      break;
+    }
+
+    case '인터랙티브':
+    case 'interactive':
+    case 'shell':
+    case 'i': {
+      // 인터랙티브 CLI 모드
+      const readline = await import('readline');
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+
+      console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║              🛠️  MCP Debugger Interactive CLI                ║
+╚══════════════════════════════════════════════════════════════╝
+
+명령어: 에러탐지해 | 목록 | 통계 | 해결 <id> | 무시 <id> | 상세 <id> | 도움말 | 종료
+`);
+
+      const prompt = () => {
+        rl.question('debugger> ', async (input) => {
+          const trimmed = input.trim();
+          if (!trimmed) {
+            prompt();
+            return;
+          }
+
+          if (['종료', 'exit', 'quit', 'q'].includes(trimmed.toLowerCase())) {
+            console.log('👋 종료합니다.');
+            rl.close();
+            process.exit(0);
+          }
+
+          // 명령어 실행
+          const newArgs = trimmed.split(/\s+/);
+          process.argv = ['node', 'cli.ts', ...newArgs];
+
+          try {
+            await main();
+          } catch (e) {
+            // 에러 무시 (main에서 process.exit 호출 방지)
+          }
+
+          console.log('');
+          prompt();
+        });
+      };
+
+      prompt();
+
+      // 프로세스 유지
+      await new Promise(() => {});
       break;
     }
 
@@ -353,21 +451,25 @@ async function main() {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 명령어:
+  인터랙티브, i        인터랙티브 CLI 모드 (지속 실행)
   에러탐지해, fetch    대기 중인 에러 하나 가져오기
   목록, list [n]       대기 중인 에러 목록 (기본 10건)
   상세, show <id>      특정 에러 상세 보기
   해결, done <id> "설명"   에러 해결 완료 기록
   무시, skip <id>      에러 무시 (처리 안 함)
+  추가, add <타입> <메시지>  에러 수동 추가
   통계, stats          에러 큐 통계
   기록, history [n]    처리 기록 (기본 10건)
   리포트, report       종합 리포트 생성
   도움말, help         이 도움말
 
 예시:
+  npm run worker -- 인터랙티브     # 인터랙티브 모드
   npm run worker -- 에러탐지해
   npm run worker -- 목록 20
   npm run worker -- 해결 5 "SQL 쿼리 수정"
   npm run worker -- 무시 3
+  npm run worker -- 추가 TestError "테스트 실패"
   npm run worker -- 리포트
 `);
       break;

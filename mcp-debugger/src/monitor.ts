@@ -7,12 +7,101 @@
 import chokidar from 'chokidar';
 import fs from 'fs';
 import path from 'path';
+import { spawn, ChildProcess } from 'child_process';
 import {
   addError,
   addLogSource,
   getLogSources,
-  updateLogPosition
+  updateLogPosition,
+  getActiveWorkers,
+  getErrorStats,
+  getPendingErrors
 } from './db.js';
+
+// 워커 풀 관리
+const MAX_WORKERS = 20;
+const workerProcesses: Map<string, ChildProcess> = new Map();
+let workerIdCounter = 0;
+
+function spawnWorker(): string {
+  const workerId = `auto-worker-${++workerIdCounter}`;
+
+  // 에러 정보 가져오기
+  const errors = getPendingErrors(1);
+  if (errors.length === 0) return workerId;
+
+  const error = errors[0];
+
+  // 상세 에러 정보 출력
+  console.log('');
+  console.log('  ┌─────────────────────────────────────────────────────────────');
+  console.log(`  │ 🚨 에러 #${error.id} [${error.error_type}]`);
+  console.log(`  │ 📝 ${error.error_message.substring(0, 80)}`);
+  if (error.file_path) {
+    console.log(`  │ 📁 ${error.file_path}${error.line_number ? ':' + error.line_number : ''}`);
+  }
+  if (error.stack_trace) {
+    const firstLine = error.stack_trace.split('\n')[0];
+    console.log(`  │ 📚 ${firstLine.substring(0, 60)}`);
+  }
+  console.log(`  │ 💡 수정 필요: ${error.source}에서 발생`);
+  console.log('  └─────────────────────────────────────────────────────────────');
+  console.log('');
+
+  const workerPath = path.join(process.cwd(), 'src', 'cli.ts');
+
+  const proc = spawn('npx', ['tsx', workerPath, 'fetch'], {
+    cwd: process.cwd(),
+    stdio: 'pipe',
+    shell: true
+  });
+
+  proc.stdout?.on('data', (data) => {
+    // 워커 출력은 최소화
+  });
+
+  proc.on('close', (code) => {
+    workerProcesses.delete(workerId);
+  });
+
+  workerProcesses.set(workerId, proc);
+  return workerId;
+}
+
+function killWorker(workerId: string) {
+  const proc = workerProcesses.get(workerId);
+  if (proc) {
+    proc.kill();
+    workerProcesses.delete(workerId);
+  }
+}
+
+function scaleWorkers() {
+  const stats = getErrorStats();
+  const pending = stats.pending;
+  const currentWorkers = workerProcesses.size;
+
+  // 필요한 워커 수 계산 (에러 1개당 워커 1개, 최대 20개)
+  const needed = Math.min(pending, MAX_WORKERS);
+
+  if (needed > currentWorkers) {
+    // 워커 추가
+    const toAdd = needed - currentWorkers;
+    for (let i = 0; i < toAdd; i++) {
+      const id = spawnWorker();
+      console.log(`  [+] 워커 추가: ${id} (대기 에러: ${pending}개)`);
+    }
+  } else if (needed < currentWorkers && pending === 0) {
+    // 에러가 없으면 워커 축소
+    const toRemove = currentWorkers - needed;
+    const workerIds = Array.from(workerProcesses.keys());
+    for (let i = 0; i < toRemove; i++) {
+      const id = workerIds[i];
+      killWorker(id);
+      console.log(`  [-] 워커 제거: ${id}`);
+    }
+  }
+}
 
 // 에러 패턴 정의
 const ERROR_PATTERNS = [
@@ -78,7 +167,11 @@ class LogMonitor {
 
   async start() {
     this.running = true;
-    console.log('🔍 Log Monitor 시작');
+    console.log('');
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║              🔍 MCP Debugger - Log Monitor                   ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
+    console.log('');
 
     // 기존 로그 소스 로드
     const sources = getLogSources();
@@ -94,7 +187,33 @@ class LogMonitor {
       await this.watchFile(source.path, source.name, source.id);
     }
 
+    // 현재 상태 표시
+    const stats = getErrorStats();
+
+    console.log('');
     console.log(`📡 ${sources.length}개 로그 파일 모니터링 중...`);
+    console.log('');
+    console.log('📊 현재 상태:');
+    console.log(`   대기 에러: ${stats.pending}개`);
+    console.log(`   처리 중: ${stats.processing}개`);
+    console.log(`   해결됨: ${stats.resolved}개`);
+    console.log(`   워커 자동 스케일링: 최대 ${MAX_WORKERS}개`);
+    console.log(`   (에러 수에 따라 워커 자동 생성/삭제)`)
+    console.log('');
+    console.log('────────────────────────────────────────────────────────────────');
+    console.log('  에러 발생 시 자동으로 큐에 추가됩니다. (Ctrl+C 종료)');
+    console.log('────────────────────────────────────────────────────────────────');
+
+    // 초기 워커 스케일링
+    scaleWorkers();
+
+    // 10초마다 워커 스케일링 + 상태 출력
+    setInterval(() => {
+      scaleWorkers();
+      const now = new Date().toLocaleTimeString('ko-KR');
+      const stats = getErrorStats();
+      console.log(`  [${now}] 대기: ${stats.pending}개 | 처리중: ${stats.processing}개 | 워커: ${workerProcesses.size}/${MAX_WORKERS}`);
+    }, 10000);
   }
 
   async watchFile(filePath: string, name: string, sourceId: number) {
@@ -109,12 +228,20 @@ class LogMonitor {
     });
 
     watcher.on('change', async () => {
-      await this.processFile(filePath, name, sourceId);
+      try {
+        await this.processFile(filePath, name, sourceId);
+      } catch (error) {
+        console.error(`[Monitor] Unhandled error processing file ${filePath}:`, error);
+      }
     });
 
     watcher.on('add', async () => {
-      console.log(`📄 파일 감지: ${name}`);
-      await this.processFile(filePath, name, sourceId);
+      try {
+        console.log(`📄 파일 감지: ${name}`);
+        await this.processFile(filePath, name, sourceId);
+      } catch (error) {
+        console.error(`[Monitor] Unhandled error processing new file ${filePath}:`, error);
+      }
     });
 
     this.watchers.set(filePath, watcher);

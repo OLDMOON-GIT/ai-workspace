@@ -102,6 +102,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_worker_status_heartbeat ON worker_status(last_heartbeat);
 `);
 
+// retry_count 컬럼 추가 (기존 DB 호환)
+try {
+  db.exec(`ALTER TABLE error_queue ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0`);
+} catch (e) {
+  // 이미 존재하면 무시
+}
+
 // 에러 해시 생성 (중복 방지용)
 export function generateErrorHash(errorType: string, errorMessage: string, filePath?: string): string {
   const content = `${errorType}:${errorMessage}:${filePath || ''}`;
@@ -251,7 +258,7 @@ export function claimError(workerId: string): ErrorItem | null {
 // 에러 상태 업데이트
 export function updateErrorStatus(
   errorId: number,
-  status: 'pending' | 'claimed' | 'processing' | 'resolved' | 'ignored',
+  status: 'pending' | 'claimed' | 'processing' | 'resolved' | 'ignored' | 'failed',
   workerId?: string
 ): boolean {
   const now = new Date().toISOString();
@@ -263,6 +270,35 @@ export function updateErrorStatus(
 
   const result = stmt.run(status, now, errorId);
   return result.changes > 0;
+}
+
+// 재시도 횟수 증가 및 실패 처리
+const MAX_RETRIES = 3;
+export function incrementRetryCount(errorId: number): { retry_count: number; failed: boolean } {
+  const now = new Date().toISOString();
+
+  // retry_count 증가
+  const updateStmt = db.prepare(`
+    UPDATE error_queue
+    SET retry_count = retry_count + 1, updated_at = ?
+    WHERE id = ?
+  `);
+  updateStmt.run(now, errorId);
+
+  // 현재 retry_count 확인
+  const selectStmt = db.prepare('SELECT retry_count FROM error_queue WHERE id = ?');
+  const row = selectStmt.get(errorId) as { retry_count: number } | undefined;
+  const retryCount = row?.retry_count || 0;
+
+  // 최대 재시도 초과 시 failed로 마킹
+  if (retryCount >= MAX_RETRIES) {
+    updateErrorStatus(errorId, 'failed');
+    return { retry_count: retryCount, failed: true };
+  }
+
+  // pending으로 되돌림
+  updateErrorStatus(errorId, 'pending');
+  return { retry_count: retryCount, failed: false };
 }
 
 // 에러 해결 기록
@@ -357,9 +393,9 @@ export function incrementWorkerStats(workerId: string, resolved: boolean): void 
   stmt.run(workerId);
 }
 
-// 활성 워커 목록
+// 활성 워커 목록 (최근 1분 이내)
 export function getActiveWorkers(): WorkerStatus[] {
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const oneMinuteAgo = new Date(Date.now() - 1 * 60 * 1000).toISOString();
 
   const stmt = db.prepare(`
     SELECT * FROM worker_status
@@ -367,7 +403,7 @@ export function getActiveWorkers(): WorkerStatus[] {
     ORDER BY last_heartbeat DESC
   `);
 
-  return stmt.all(fiveMinutesAgo) as WorkerStatus[];
+  return stmt.all(oneMinuteAgo) as WorkerStatus[];
 }
 
 // ==================== 통계 및 리포트 ====================
