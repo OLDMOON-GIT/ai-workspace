@@ -165,11 +165,15 @@ REM 서브루틴: AI 로그인 설정 (1시간 이내면 스킵)
 REM ============================================================
 :RUN_SETUP_LOGIN
 set "TIMESTAMP_FILE=%~dp0.last_login_setup"
+set "RESULT=RUN"
 
-REM PowerShell 스크립트로 시간 체크
-for /f %%i in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0check_login_time.ps1" -TimestampFile "%TIMESTAMP_FILE%"') do set "RESULT=%%i"
+REM 파일 존재하면 시간 체크
+if exist "%TIMESTAMP_FILE%" (
+    powershell -NoProfile -Command "if (((Get-Date) - (Get-Item '%TIMESTAMP_FILE%').LastWriteTime).TotalMinutes -lt 60) { exit 0 } else { exit 1 }"
+    if !errorlevel!==0 set "RESULT=SKIP"
+)
 
-if "%RESULT%"=="SKIP" (
+if "!RESULT!"=="SKIP" (
     echo [1/2] AI 로그인 설정 스킵 (1시간 이내 실행됨)
 ) else (
     echo [1/2] AI 로그인 설정 실행 중...
