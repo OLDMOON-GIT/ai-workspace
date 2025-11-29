@@ -163,14 +163,21 @@ echo 👋 종료합니다.
 exit /b 0
 
 REM ============================================================
-REM 서브루틴: MySQL 초기화
+REM 서브루틴: MySQL 초기화 (최초 1회만)
 REM ============================================================
 :INIT_MYSQL
-echo.
-echo 🔹 MySQL 초기화 중...
 set MYSQL_USER=root
 set MYSQL_PASSWORD=trend2024!
 set MYSQL_DATABASE=trend_video
+
+REM 이미 초기화 되었으면 스킵
+if exist "%~dp0.mysql_initialized" (
+    echo 🔹 MySQL 이미 초기화됨 [SKIP]
+    goto :eof
+)
+
+echo.
+echo 🔹 MySQL 초기화 중 (최초 1회)...
 
 REM MySQL 연결 테스트
 mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
@@ -186,6 +193,7 @@ REM 스키마 적용
 if exist "%~dp0trend-video-frontend\schema-mysql.sql" (
     mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% %MYSQL_DATABASE% < "%~dp0trend-video-frontend\schema-mysql.sql" 2>nul
     echo    MySQL 스키마 적용 완료
+    echo %date% %time% > "%~dp0.mysql_initialized"
 ) else (
     echo    [SKIP] schema-mysql.sql 없음
 )
