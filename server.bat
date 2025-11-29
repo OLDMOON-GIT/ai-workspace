@@ -51,6 +51,12 @@ git pull
 cd ..
 
 echo.
+echo 🔹 AI 로그인 설정 실행 중... (크롬 브라우저가 열립니다)
+cd trend-video-backend\src
+python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
+cd ..\..
+
+echo.
 echo ✅ Git Pull 완료! Next.js dev 서버가 실행 중이면 자동으로 Hot Reload됩니다.
 echo.
 pause
