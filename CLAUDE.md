@@ -81,26 +81,33 @@ tasks/{task_id}/
 직접 Bash/PowerShell로 실행하고 결과만 알려줌
 ```
 
-## ⛔ DB 컬럼 삭제 시 주의사항 ⛔
+## 🗄️ MySQL 스키마 관리
 
-**컬럼 삭제 요청 시 반드시 2곳을 같이 처리해야 함!**
+### 서버 정보
+| 서버 | IP | 사용자 | 작업공간 |
+|------|----|----|---------|
+| oldmoon PC | localhost | oldmoon | C:\Users\oldmoon\workspace |
+| moony 서버 | 192.168.0.30 | moony | C:\Users\moony\workspace |
 
-1. **DB에서 컬럼 삭제** (ALTER TABLE 또는 테이블 재생성)
-2. **sqlite.ts의 runMigrations()에서 해당 ADD COLUMN 코드도 삭제/주석처리**
+### MySQL 접속 정보
+- User: `root`
+- Password: `trend2024!`
+- Database: `trend_video`
 
-안 그러면 서버 재시작할 때마다 `ALTER TABLE ADD COLUMN`으로 다시 생성됨!
+### 스키마 변경 시
+1. `schema-mysql.sql` 수정
+2. **양쪽 서버에서** `.schema_hash` 파일 삭제
+3. `server.bat` 실행하면 자동 재적용
 
-```javascript
-// ❌ 이 코드가 남아있으면 컬럼 삭제해도 다시 생김
-try {
-  db.exec(`ALTER TABLE xxx ADD COLUMN yyy TEXT;`);
-} catch (e) {}
-
-// ✅ 컬럼 삭제 시 이 코드도 같이 삭제하거나 주석처리
-// try {
-//   db.exec(`ALTER TABLE xxx ADD COLUMN yyy TEXT;`);
-// } catch (e) {}
+```bash
+# 스키마 강제 재적용 (양쪽 서버 모두 실행)
+del .schema_hash
+server.bat
 ```
+
+### ⛔ 컬럼 추가/삭제 시 주의
+- **schema-mysql.sql만 수정** (mysql.ts의 runMigrations()는 비워둠)
+- 양쪽 서버 모두 `.schema_hash` 삭제 필요
 
 ## 📝 코딩 컨벤션
 
