@@ -163,26 +163,42 @@ echo 👋 종료합니다.
 exit /b 0
 
 REM ============================================================
-REM 서브루틴: MySQL 초기화 (최초 1회만)
+REM 서브루틴: MySQL 초기화 (스키마 변경 시 자동 재적용)
 REM ============================================================
 :INIT_MYSQL
 set MYSQL_USER=root
 set MYSQL_PASSWORD=trend2024!
 set MYSQL_DATABASE=trend_video
+set SCHEMA_FILE=%~dp0trend-video-frontend\schema-mysql.sql
+set HASH_FILE=%~dp0.schema_hash
 
-REM 이미 초기화 되었으면 스킵
-if exist "%~dp0.mysql_initialized" (
-    echo 🔹 MySQL 이미 초기화됨 [SKIP]
+REM 스키마 파일 없으면 스킵
+if not exist "%SCHEMA_FILE%" (
+    echo 🔹 MySQL [SKIP] schema-mysql.sql 없음
+    goto :eof
+)
+
+REM 스키마 파일 해시 계산
+for /f %%i in ('certutil -hashfile "%SCHEMA_FILE%" MD5 ^| findstr /v "hash"') do set NEW_HASH=%%i
+
+REM 이전 해시와 비교
+set OLD_HASH=
+if exist "%HASH_FILE%" (
+    set /p OLD_HASH=<"%HASH_FILE%"
+)
+
+if "%NEW_HASH%"=="%OLD_HASH%" (
+    echo 🔹 MySQL 스키마 변경 없음 [SKIP]
     goto :eof
 )
 
 echo.
-echo 🔹 MySQL 초기화 중 (최초 1회)...
+echo 🔹 MySQL 스키마 적용 중...
 
 REM MySQL 연결 테스트
 mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo    [SKIP] MySQL 연결 실패 - MySQL이 실행 중인지 확인하세요
+    echo    [ERROR] MySQL 연결 실패
     goto :eof
 )
 
@@ -190,13 +206,9 @@ REM DB 생성
 mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS %MYSQL_DATABASE% CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>nul
 
 REM 스키마 적용
-if exist "%~dp0trend-video-frontend\schema-mysql.sql" (
-    mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% %MYSQL_DATABASE% < "%~dp0trend-video-frontend\schema-mysql.sql" 2>nul
-    echo    MySQL 스키마 적용 완료
-    echo %date% %time% > "%~dp0.mysql_initialized"
-) else (
-    echo    [SKIP] schema-mysql.sql 없음
-)
+mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% %MYSQL_DATABASE% < "%SCHEMA_FILE%" 2>nul
+echo    스키마 적용 완료
+echo %NEW_HASH%> "%HASH_FILE%"
 goto :eof
 
 REM ============================================================
