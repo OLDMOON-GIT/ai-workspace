@@ -50,11 +50,9 @@ cd trend-video-backend
 git pull
 cd ..
 
-echo.
-echo 🔹 AI 로그인 설정 실행 중... (크롬 브라우저가 열립니다)
-cd trend-video-backend\src
+echo [1/2] AI 로그인 설정 실행 중...
+cd /d "C:\Users\oldmoon\workspace\trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
-cd ..\..
 
 echo.
 echo ✅ Git Pull 완료! Next.js dev 서버가 실행 중이면 자동으로 Hot Reload됩니다.
@@ -91,11 +89,9 @@ taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
 REM AI 로그인 설정 (크롬 브라우저 체크)
-echo.
-echo 🔹 AI 로그인 설정 실행 중... (크롬 브라우저가 열립니다)
-cd trend-video-backend\src
+echo [1/2] AI 로그인 설정 실행 중...
+cd /d "C:\Users\oldmoon\workspace\trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
-cd ..\..
 
 REM 서버 시작
 echo.
@@ -122,12 +118,11 @@ taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
 REM AI 로그인 설정 (크롬 브라우저 체크)
-echo 🔹 AI 로그인 설정 실행 중... (크롬 브라우저가 열립니다)
-cd trend-video-backend\src
+echo [1/2] AI 로그인 설정 실행 중...
+cd /d "C:\Users\oldmoon\workspace\trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
-cd ..\..
 
-echo 🔹 Frontend 서버 시작...
+echo [2/2] Frontend 서버 시작...
 cd trend-video-frontend
 start "Trend Video Frontend" cmd /k "npm run dev"
 cd ..
