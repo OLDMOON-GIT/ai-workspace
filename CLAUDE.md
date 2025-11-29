@@ -104,31 +104,45 @@ try {
 
 ## 📝 코딩 컨벤션
 
-### 변수명/속성명 규칙
-**JS/TS 코드에서는 camelCase만 사용! snake_case는 DB 컬럼명에서만!**
+### 네이밍 규칙 (언어/환경별)
+| 구분 | 컨벤션 | 예시 |
+|------|--------|------|
+| JSON 키 | **camelCase** | `{ "sceneNumber": 1, "imagePrompt": "..." }` |
+| JS / TS | **camelCase** | `const taskId = queue.taskId;` |
+| DB 컬럼 | **snake_case** | `SELECT task_id, user_id FROM task` |
+| Python 변수 | **snake_case** | `scene_number = data["sceneNumber"]` |
 
+### SQL SELECT 시 AS alias로 camelCase 변환
 ```typescript
-// ✅ SQL SELECT 시 AS alias로 camelCase 변환
+// ✅ DB 컬럼은 snake_case, JS에서 사용할 땐 AS alias로 camelCase 변환
 SELECT t.task_id as taskId,
        t.user_id as userId,
        c.prompt_format as promptFormat,
-       c.product_info as productInfo,
-       cs.tts_voice as ttsVoice
+       c.product_info as productInfo
 
 // ✅ JS 코드에서 camelCase 사용
 const taskId = queue.taskId;
-const format = queue.promptFormat;
 
 // ❌ JS 코드에서 snake_case 사용 금지
 const taskId = queue.task_id;  // 금지!
-const format = queue.prompt_format;  // 금지!
+```
+
+### Python에서 JSON 읽을 때
+```python
+# ✅ JSON 키는 camelCase, Python 변수는 snake_case
+data = json.load(f)
+scene_number = data["sceneNumber"]
+image_prompt = data["imagePrompt"]
+
+# ❌ JSON 키를 snake_case로 쓰지 말 것
+scene_number = data["scene_number"]  # 금지!
 ```
 
 ### 속성명 통일
 - `productInfo` (O) / `productData` (X) / `product_data` (X)
 - `promptFormat` (O) / `prompt_format` (X)
 - `taskId` (O) / `task_id` (X)
-- `userId` (O) / `user_id` (X)
+- `sceneNumber` (O) / `scene_number` (X)
 
 ## 🚨🚨🚨 절대 삭제/수정 금지 규칙 🚨🚨🚨
 
