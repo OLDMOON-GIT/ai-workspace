@@ -84,6 +84,13 @@ echo 🔹 기존 서버 종료 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
+REM AI 로그인 설정
+echo.
+echo 🔹 AI 로그인 설정 실행 중...
+cd trend-video-backend\src
+python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok 2>nul
+cd ..\..
+
 REM 서버 시작
 echo.
 echo 🔹 서버 시작 중...
@@ -107,6 +114,12 @@ REM 기존 서버 종료
 echo 🔹 기존 프로세스 정리 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
+
+REM AI 로그인 설정
+echo 🔹 AI 로그인 설정 실행 중...
+cd trend-video-backend\src
+python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok 2>nul
+cd ..\..
 
 echo 🔹 Frontend 서버 시작...
 cd trend-video-frontend
