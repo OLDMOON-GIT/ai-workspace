@@ -86,11 +86,12 @@ echo 🔹 기존 서버 종료 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
+call :INIT_MYSQL
 call :RUN_SETUP_LOGIN
 
 REM 서버 시작
 echo.
-echo [2/2] 서버 시작 중...
+echo [3/3] 서버 시작 중...
 cd /d "%~dp0trend-video-frontend"
 start "Trend Video Frontend" cmd /k "npm run dev"
 cd /d "%~dp0"
@@ -112,6 +113,7 @@ echo 🔹 기존 프로세스 정리 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
+call :INIT_MYSQL
 call :RUN_SETUP_LOGIN
 
 echo [2/2] Frontend 서버 시작 중...
@@ -159,6 +161,35 @@ goto MENU
 echo.
 echo 👋 종료합니다.
 exit /b 0
+
+REM ============================================================
+REM 서브루틴: MySQL 초기화
+REM ============================================================
+:INIT_MYSQL
+echo.
+echo 🔹 MySQL 초기화 중...
+set MYSQL_USER=root
+set MYSQL_PASSWORD=trend2024!
+set MYSQL_DATABASE=trend_video
+
+REM MySQL 연결 테스트
+mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo    [SKIP] MySQL 연결 실패 - MySQL이 실행 중인지 확인하세요
+    goto :eof
+)
+
+REM DB 생성
+mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS %MYSQL_DATABASE% CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>nul
+
+REM 스키마 적용
+if exist "%~dp0trend-video-frontend\schema-mysql.sql" (
+    mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% %MYSQL_DATABASE% < "%~dp0trend-video-frontend\schema-mysql.sql" 2>nul
+    echo    MySQL 스키마 적용 완료
+) else (
+    echo    [SKIP] schema-mysql.sql 없음
+)
+goto :eof
 
 REM ============================================================
 REM 서브루틴: AI 로그인 설정 (1시간 이내면 스킵)
