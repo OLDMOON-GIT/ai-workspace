@@ -50,9 +50,7 @@ cd trend-video-backend
 git pull
 cd ..
 
-echo [1/2] AI 로그인 설정 실행 중...
-cd /d "%~dp0trend-video-backend\src"
-python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
+call :RUN_SETUP_LOGIN
 
 echo.
 echo ✅ Git Pull 완료! Next.js dev 서버가 실행 중이면 자동으로 Hot Reload됩니다.
@@ -88,18 +86,14 @@ echo 🔹 기존 서버 종료 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
-REM AI 로그인 설정 (크롬 브라우저 체크)
-echo [1/2] AI 로그인 설정 실행 중...
-cd /d "%~dp0trend-video-backend\src"
-python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
-cd /d "%~dp0"
+call :RUN_SETUP_LOGIN
 
 REM 서버 시작
 echo.
 echo [2/2] 서버 시작 중...
 cd /d "%~dp0trend-video-frontend"
 start "Trend Video Frontend" cmd /k "npm run dev"
-cd ..
+cd /d "%~dp0"
 
 echo.
 echo ✅ 서버가 시작되었습니다!
@@ -118,11 +112,7 @@ echo 🔹 기존 프로세스 정리 중...
 taskkill /F /IM node.exe 2>nul
 timeout /t 2 /nobreak > nul
 
-REM AI 로그인 설정 (크롬 브라우저 체크)
-echo [1/2] AI 로그인 설정 실행 중...
-cd /d "%~dp0trend-video-backend\src"
-python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
-cd /d "%~dp0"
+call :RUN_SETUP_LOGIN
 
 echo [2/2] Frontend 서버 시작 중...
 cd /d "%~dp0trend-video-frontend"
@@ -169,3 +159,24 @@ goto MENU
 echo.
 echo 👋 종료합니다.
 exit /b 0
+
+REM ============================================================
+REM 서브루틴: AI 로그인 설정 (1시간 이내면 스킵)
+REM ============================================================
+:RUN_SETUP_LOGIN
+set "TIMESTAMP_FILE=%~dp0.last_login_setup"
+
+REM 1시간(3600초) 이내인지 체크
+for /f %%i in ('powershell -NoProfile -Command "if (Test-Path '%TIMESTAMP_FILE%') { $diff = (Get-Date) - (Get-Item '%TIMESTAMP_FILE%').LastWriteTime; if ($diff.TotalSeconds -lt 3600) { 'SKIP' } else { 'RUN' } } else { 'RUN' }"') do set RESULT=%%i
+
+if "%RESULT%"=="SKIP" (
+    echo [1/2] AI 로그인 설정 스킵 (1시간 이내 실행됨)
+) else (
+    echo [1/2] AI 로그인 설정 실행 중...
+    cd /d "%~dp0trend-video-backend\src"
+    python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
+    cd /d "%~dp0"
+    REM 타임스탬프 파일 업데이트
+    echo %date% %time% > "%TIMESTAMP_FILE%"
+)
+goto :eof
