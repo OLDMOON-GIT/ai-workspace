@@ -237,18 +237,19 @@ for /f %%i in ('python "%~dp0check_login_time.py"') do set "RESULT=%%i"
 
 if "%RESULT%"=="SKIP" (
     echo [1/2] AI 로그인 설정 스킵 - 1시간 이내 실행됨
-) else (
-    echo [1/2] AI 로그인 설정 실행 중...
-    REM Playwright 설치 확인
-    python -c "import playwright" 2>nul
-    if %errorlevel% neq 0 (
-        echo       Playwright 설치 중...
-        pip install playwright >nul 2>&1
-        playwright install chromium >nul 2>&1
-    )
-    cd /d "%~dp0trend-video-backend\src"
-    python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
-    cd /d "%~dp0"
-    echo %date% %time% > "%~dp0.last_login_setup"
+    goto :eof
 )
+
+echo [1/2] AI 로그인 설정 실행 중...
+REM Playwright 설치 확인
+python -c "import playwright" 2>nul
+if errorlevel 1 (
+    echo       Playwright 설치 중...
+    pip install playwright
+    playwright install chromium
+)
+cd /d "%~dp0trend-video-backend\src"
+python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
+cd /d "%~dp0"
+echo %date% %time% > "%~dp0.last_login_setup"
 goto :eof
