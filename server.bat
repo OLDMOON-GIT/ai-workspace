@@ -241,13 +241,9 @@ if "%RESULT%"=="SKIP" (
 )
 
 echo [1/2] AI 로그인 설정 실행 중...
-REM Playwright 설치 확인
-python -c "import playwright" 2>nul
-if errorlevel 1 (
-    echo       Playwright 설치 중...
-    pip install playwright
-    playwright install chromium
-)
+echo       Playwright 설치 확인...
+pip install playwright >nul 2>&1
+playwright install chromium >nul 2>&1
 cd /d "%~dp0trend-video-backend\src"
 python ai_aggregator\setup_login.py -a chatgpt,gemini,claude,grok
 cd /d "%~dp0"
