@@ -99,13 +99,23 @@ sc query MySQL80 | find "RUNNING" >nul 2>&1
 if %errorlevel% neq 0 (
     echo MySQL 서비스 시작 중...
     net start MySQL80 >nul 2>&1
-    echo    서비스 초기화 대기 중... (10초^)
-    timeout /t 10 /nobreak >nul
+    if %errorlevel% neq 0 (
+        echo [WARNING] MySQL 서비스 시작 실패! 원격에서 복구 시도...
+        call :RESTORE_FROM_REMOTE
+        if %errorlevel% neq 0 (
+            echo [ERROR] 원격 복구 실패! 서버 시작을 중단합니다.
+            pause
+            exit /b 1
+        )
+        goto MYSQL_CONNECTED
+    )
+    echo    서비스 초기화 대기 중... (5초^)
+    timeout /t 5 /nobreak >nul
 ) else (
     echo MySQL 서비스는 이미 실행 중입니다.
 )
 
-REM MySQL 연결 테스트 (최대 10회 재시도)
+REM MySQL 연결 테스트 (최대 3회 재시도)
 echo MySQL 연결 테스트 중...
 set RETRY_COUNT=0
 :MYSQL_RETRY
@@ -116,22 +126,25 @@ if %errorlevel% equ 0 (
 )
 
 set /a RETRY_COUNT+=1
-if %RETRY_COUNT% lss 10 (
-    echo    연결 실패, 재시도 중... (%RETRY_COUNT%/10^)
-    timeout /t 1 /nobreak >nul
+if %RETRY_COUNT% lss 3 (
+    echo    연결 실패, 재시도 중... (%RETRY_COUNT%/3^)
+    timeout /t 2 /nobreak >nul
     goto MYSQL_RETRY
 )
 
-REM 10번 재시도 후에도 실패하면 에러
-echo.
-echo [ERROR] MySQL 연결 실패
-echo    - MySQL 서비스가 실행 중인지 확인하세요
-echo    - 비밀번호가 맞는지 확인하세요: trend2024^^!
-echo    - MySQL Workbench로 직접 접속을 시도해보세요
-echo.
-echo 서버 시작을 중단합니다.
-pause
-exit /b 1
+REM 3번 재시도 후에도 실패하면 원격 복구 시도
+echo [WARNING] 로컬 MySQL 연결 실패! 원격에서 복구 시도...
+call :RESTORE_FROM_REMOTE
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] 원격 복구 실패! 수동으로 확인이 필요합니다.
+    echo    - MySQL Workbench로 접속 테스트: root / trend2024^^!
+    echo    - 원격 서버(192.168.0.30^) 접근 가능 여부 확인
+    echo.
+    echo 서버 시작을 중단합니다.
+    pause
+    exit /b 1
+)
 
 :MYSQL_CONNECTED
 
