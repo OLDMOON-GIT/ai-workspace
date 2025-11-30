@@ -36,24 +36,37 @@ echo ============================================================
 
 echo.
 echo 🔹 Workspace 업데이트...
+git stash -q 2>nul
 git pull
+if %errorlevel% neq 0 (
+    echo    ⚠️ [WARNING] Pull 실패! 로컬 변경사항 확인 필요
+)
 
 echo.
 echo 🔹 Frontend 업데이트...
 cd trend-video-frontend
+git stash -q 2>nul
 git pull
+if %errorlevel% neq 0 (
+    echo    ⚠️ [WARNING] Pull 실패! 로컬 변경사항 확인 필요
+)
 cd ..
 
 echo.
 echo 🔹 Backend 업데이트...
 cd trend-video-backend
+git stash -q 2>nul
 git pull
+if %errorlevel% neq 0 (
+    echo    ⚠️ [WARNING] Pull 실패! 로컬 변경사항 확인 필요
+)
 cd ..
 
 call :RUN_SETUP_LOGIN
 
 echo.
 echo ✅ Git Pull 완료! Next.js dev 서버가 실행 중이면 자동으로 Hot Reload됩니다.
+echo    💡 Stash된 변경사항 복구: git stash pop
 echo.
 pause
 goto MENU
@@ -63,21 +76,33 @@ echo.
 echo 🔄 Git Pull + 서버 재시작...
 echo ============================================================
 
-REM Git Pull
+REM Git Pull (stash 후 pull)
 echo.
 echo 🔹 Workspace 업데이트...
+git stash -q 2>nul
 git pull
+if %errorlevel% neq 0 (
+    echo    ⚠️ [WARNING] Pull 실패! 로컬 변경사항 확인 필요
+)
 
 echo.
 echo 🔹 Frontend 업데이트...
 cd trend-video-frontend
+git stash -q 2>nul
 git pull
+if %errorlevel% neq 0 (
+    echo    ⚠️ [WARNING] Pull 실패! 로컬 변경사항 확인 필요
+)
 cd ..
 
 echo.
 echo 🔹 Backend 업데이트...
 cd trend-video-backend
+git stash -q 2>nul
 git pull
+if %errorlevel% neq 0 (
+    echo    ⚠️ [WARNING] Pull 실패! 로컬 변경사항 확인 필요
+)
 cd ..
 
 REM 기존 서버 종료
@@ -167,7 +192,7 @@ REM 서브루틴: MySQL 초기화 (스키마 변경 시 자동 재적용)
 REM ============================================================
 :INIT_MYSQL
 set MYSQL_USER=root
-set MYSQL_PASSWORD=trend2024!
+set MYSQL_PASSWORD=ansl1233!
 set MYSQL_DATABASE=trend_video
 set SCHEMA_FILE=%~dp0trend-video-frontend\schema-mysql.sql
 set HASH_FILE=%~dp0.schema_hash
