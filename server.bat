@@ -192,7 +192,7 @@ REM 서브루틴: MySQL 초기화 (스키마 변경 시 자동 재적용)
 REM ============================================================
 :INIT_MYSQL
 set MYSQL_USER=root
-set MYSQL_PASSWORD=ansl1233!
+set MYSQL_PASSWORD=trend2024!
 set MYSQL_DATABASE=trend_video
 set SCHEMA_FILE=%~dp0trend-video-frontend\schema-mysql.sql
 set HASH_FILE=%~dp0.schema_hash
@@ -219,13 +219,6 @@ if "%NEW_HASH%"=="%OLD_HASH%" (
 
 echo.
 echo 🔹 MySQL 스키마 적용 중...
-
-REM MySQL 연결 테스트
-mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo    [ERROR] MySQL 연결 실패
-    goto :eof
-)
 
 REM DB 생성
 mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS %MYSQL_DATABASE% CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>nul
