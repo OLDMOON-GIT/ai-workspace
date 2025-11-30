@@ -99,7 +99,10 @@ sc query MySQL80 | find "RUNNING" >nul 2>&1
 if %errorlevel% neq 0 (
     echo MySQL 서비스 시작 중...
     net start MySQL80 >nul 2>&1
-    timeout /t 3 /nobreak >nul
+    echo    서비스 초기화 대기 중... (10초^)
+    timeout /t 10 /nobreak >nul
+) else (
+    echo MySQL 서비스는 이미 실행 중입니다.
 )
 
 REM MySQL 연결 테스트 (최대 10회 재시도)
@@ -121,9 +124,9 @@ if %RETRY_COUNT% lss 10 (
 
 REM 10번 재시도 후에도 실패하면 에러
 echo.
-echo [ERROR] MySQL 연결 실패!
+echo [ERROR] MySQL 연결 실패
 echo    - MySQL 서비스가 실행 중인지 확인하세요
-echo    - 비밀번호(trend2024!^)가 맞는지 확인하세요
+echo    - 비밀번호가 맞는지 확인하세요: trend2024^^!
 echo    - MySQL Workbench로 직접 접속을 시도해보세요
 echo.
 echo 서버 시작을 중단합니다.
