@@ -192,7 +192,7 @@ REM 서브루틴: MySQL 초기화 (스키마 변경 시 자동 재적용)
 REM ============================================================
 :INIT_MYSQL
 set MYSQL_USER=root
-set MYSQL_PASSWORD=ansl1233!
+set MYSQL_PASSWORD=trend2024!
 set MYSQL_DATABASE=trend_video
 set SCHEMA_FILE=%~dp0trend-video-frontend\schema-mysql.sql
 set HASH_FILE=%~dp0.schema_hash
