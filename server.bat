@@ -105,10 +105,10 @@ if %errorlevel% neq 0 (
 )
 cd ..
 
-REM 기존 서버 종료
+REM 기존 서버 종료 (포트 3000만)
 echo.
-echo 🔹 기존 서버 종료 중...
-taskkill /F /IM node.exe 2>nul
+echo 🔹 기존 서버 종료 중 (포트 3000)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %%a 2>nul
 timeout /t 2 /nobreak > nul
 
 call :INIT_MYSQL
@@ -133,9 +133,9 @@ echo.
 echo 🖥️  서버 시작...
 echo ============================================================
 
-REM 기존 서버 종료
-echo 🔹 기존 프로세스 정리 중...
-taskkill /F /IM node.exe 2>nul
+REM 기존 서버 종료 (포트 3000만)
+echo 🔹 기존 프로세스 정리 중 (포트 3000)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %%a 2>nul
 timeout /t 2 /nobreak > nul
 
 call :INIT_MYSQL
@@ -157,8 +157,8 @@ goto MENU
 echo.
 echo 🛑 서버 중지...
 echo ============================================================
-taskkill /F /IM node.exe 2>nul
-echo ✅ 모든 Node.js 프로세스가 종료되었습니다.
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %%a 2>nul
+echo ✅ 포트 3000 서버가 종료되었습니다.
 echo.
 pause
 goto MENU
