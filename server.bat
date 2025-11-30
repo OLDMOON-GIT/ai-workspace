@@ -93,6 +93,8 @@ set MYSQL_PASSWORD=trend2024!
 set MYSQL_DATABASE=trend_video
 set SCHEMA_FILE=%~dp0trend-video-frontend\schema-mysql.sql
 set HASH_FILE=%~dp0.schema_hash
+set MYSQL_BIN="C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+set MYSQLDUMP_BIN="C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
 
 REM MySQL 서비스 확인 및 시작
 sc query MySQL80 | find "RUNNING" >nul 2>&1
@@ -119,7 +121,7 @@ REM MySQL 연결 테스트 (최대 3회 재시도)
 echo MySQL 연결 테스트 중...
 set RETRY_COUNT=0
 :MYSQL_RETRY
-mysql -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
+%MYSQL_BIN% -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
 if %errorlevel% equ 0 (
     echo    MySQL 연결 OK
     goto MYSQL_CONNECTED
@@ -172,10 +174,10 @@ echo.
 echo MySQL 스키마 적용 중...
 
 REM DB 생성
-mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS %MYSQL_DATABASE% CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>nul
+%MYSQL_BIN% -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS %MYSQL_DATABASE% CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>nul
 
 REM 스키마 적용
-mysql -u %MYSQL_USER% -p%MYSQL_PASSWORD% %MYSQL_DATABASE% < "%SCHEMA_FILE%" 2>nul
+%MYSQL_BIN% -u %MYSQL_USER% -p%MYSQL_PASSWORD% %MYSQL_DATABASE% < "%SCHEMA_FILE%" 2>nul
 echo    스키마 적용 완료
 echo %NEW_HASH%> "%HASH_FILE%"
 goto :eof
@@ -190,7 +192,7 @@ set USER_BACKUP=%~dp0mysql_backup\users.sql
 
 echo.
 echo [1/5] 원격 MySQL 연결 테스트 중 (%REMOTE_HOST%)...
-mysql -h %REMOTE_HOST% -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
+%MYSQL_BIN% -h %REMOTE_HOST% -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] 원격 MySQL 연결 실패!
     exit /b 1
@@ -198,7 +200,7 @@ if %errorlevel% neq 0 (
 echo       OK
 
 echo [2/5] 원격에서 데이터 덤프 중...
-mysqldump -h %REMOTE_HOST% -u %MYSQL_USER% -p%MYSQL_PASSWORD% --default-character-set=utf8mb4 %MYSQL_DATABASE% > "%DUMP_FILE%" 2>nul
+%MYSQLDUMP_BIN% -h %REMOTE_HOST% -u %MYSQL_USER% -p%MYSQL_PASSWORD% --default-character-set=utf8mb4 %MYSQL_DATABASE% > "%DUMP_FILE%" 2>nul
 if %errorlevel% neq 0 (
     echo [ERROR] 덤프 실패!
     exit /b 1
@@ -206,19 +208,19 @@ if %errorlevel% neq 0 (
 echo       OK
 
 echo [3/5] 로컬 DB 생성 중...
-mysql -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS %MYSQL_DATABASE% CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>nul
+%MYSQL_BIN% -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "CREATE DATABASE IF NOT EXISTS %MYSQL_DATABASE% CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>nul
 echo       OK
 
 echo [4/5] 로컬 사용자/권한 복원 중...
 if exist "%USER_BACKUP%" (
-    mysql -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% < "%USER_BACKUP%" 2>nul
+    %MYSQL_BIN% -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% < "%USER_BACKUP%" 2>nul
     echo       OK
 ) else (
     echo       [SKIP] users.sql 없음
 )
 
 echo [5/5] 로컬에 데이터 복원 중...
-mysql -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% --default-character-set=utf8mb4 %MYSQL_DATABASE% < "%DUMP_FILE%" 2>nul
+%MYSQL_BIN% -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% --default-character-set=utf8mb4 %MYSQL_DATABASE% < "%DUMP_FILE%" 2>nul
 if %errorlevel% neq 0 (
     echo [ERROR] 복원 실패!
     exit /b 1
