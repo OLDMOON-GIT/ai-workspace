@@ -102,17 +102,35 @@ if %errorlevel% neq 0 (
     timeout /t 3 /nobreak >nul
 )
 
-REM MySQL 연결 테스트
+REM MySQL 연결 테스트 (최대 10회 재시도)
+echo MySQL 연결 테스트 중...
+set RETRY_COUNT=0
+:MYSQL_RETRY
 mysql -h 127.0.0.1 -u %MYSQL_USER% -p%MYSQL_PASSWORD% -e "SELECT 1" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [WARNING] 로컬 MySQL 연결 실패! 원격에서 복구 시도...
-    call :RESTORE_FROM_REMOTE
-    if %errorlevel% neq 0 (
-        echo [ERROR] 복구 실패!
-        goto :eof
-    )
+if %errorlevel% equ 0 (
+    echo    MySQL 연결 OK
+    goto MYSQL_CONNECTED
 )
-echo MySQL 연결 OK
+
+set /a RETRY_COUNT+=1
+if %RETRY_COUNT% lss 10 (
+    echo    연결 실패, 재시도 중... (%RETRY_COUNT%/10^)
+    timeout /t 1 /nobreak >nul
+    goto MYSQL_RETRY
+)
+
+REM 10번 재시도 후에도 실패하면 에러
+echo.
+echo [ERROR] MySQL 연결 실패!
+echo    - MySQL 서비스가 실행 중인지 확인하세요
+echo    - 비밀번호(trend2024!^)가 맞는지 확인하세요
+echo    - MySQL Workbench로 직접 접속을 시도해보세요
+echo.
+echo 서버 시작을 중단합니다.
+pause
+exit /b 1
+
+:MYSQL_CONNECTED
 
 REM 스키마 파일 없으면 스킵
 if not exist "%SCHEMA_FILE%" (
