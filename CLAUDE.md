@@ -27,15 +27,16 @@
 
 ### ⛔⛔⛔ task 테이블 컬럼 추가 금지! ⛔⛔⛔
 **task 테이블은 최소화 상태 유지! 아래 컬럼만 존재해야 함:**
-- task_id, status, user_id, created_at, updated_at
+- task_id, user_id, scheduled_time, created_at, updated_at
 - **설정 컬럼(category, tags, channel, script_mode 등)은 content/content_setting에!**
-- **sqlite.ts에 ALTER TABLE task ADD COLUMN 절대 추가하지 마세요!**
+- **상태는 task_queue.status만 사용! task.status 제거됨!**
+- **예약은 task.scheduled_time으로 관리! task_schedule 테이블 제거됨!**
 
 ```
-task (최소화) - ID + status + user_id
+task (최소화) - ID + user_id + scheduled_time
 ├── task_id (PK)
-├── status (draft/active/completed/archived/cancelled)
 ├── user_id
+├── scheduled_time (예약 시간, NULL이면 예약 없음)
 └── created_at, updated_at
 
 content (메인 데이터) - content_id = task_id
@@ -52,13 +53,15 @@ content_setting (제작 설정) - content_id = task_id
 └── created_at, updated_at
 
 task_queue (큐 상태) - task_id (PK)
-├── type, status, created_at, started_at, completed_at
-├── user_id, error, elapsed_time
-└── script/image/video/youtube_completed_at
+├── type (script/image/video/youtube)
+├── status (waiting/processing/completed/failed/cancelled)
+├── created_at, user_id, error
+└── 시간 기록은 task_time_log로 분리됨!
 
-task_schedule (예약 스케줄) - schedule_id (PK)
-├── task_id, scheduled_time, status
-└── created_at, updated_at
+task_time_log (시간 기록) - (task_id + type + retry_cnt)
+├── task_id, type, retry_cnt (재시도 횟수)
+├── start_time, end_time
+└── elapsed_time = end_time - start_time (계산으로 구함)
 ```
 
 ### 폴더 구조
@@ -91,23 +94,18 @@ tasks/{task_id}/
 
 ### MySQL 접속 정보
 - User: `root`
-- Password: `trend2024!`
+- Password: `trend2024` (느낌표 없음!)
 - Database: `trend_video`
 
 ### 스키마 변경 시
 1. `schema-mysql.sql` 수정
-2. **양쪽 서버에서** `.schema_hash` 파일 삭제
-3. `server.bat` 실행하면 자동 재적용
-
-```bash
-# 스키마 강제 재적용 (양쪽 서버 모두 실행)
-del .schema_hash
-server.bat
-```
+2. `server.bat` 실행하면 자동 재적용 (CREATE TABLE IF NOT EXISTS)
+3. 컬럼 추가/삭제는 별도 마이그레이션 SQL 실행 필요
 
 ### ⛔ 컬럼 추가/삭제 시 주의
 - **schema-mysql.sql만 수정** (mysql.ts의 runMigrations()는 비워둠)
-- 양쪽 서버 모두 `.schema_hash` 삭제 필요
+- 컬럼 추가/삭제는 별도 마이그레이션 스크립트 작성 후 직접 실행
+- `.schema_hash` 파일은 사용하지 않음
 
 ## 📝 코딩 컨벤션
 
