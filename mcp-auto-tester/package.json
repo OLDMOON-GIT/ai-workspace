@@ -1,0 +1,26 @@
+{
+  "name": "mcp-auto-tester",
+  "version": "1.0.0",
+  "description": "자동 테스트 실행 및 결과 추적 MCP",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsx src/monitor.ts",
+    "test": "tsx src/cli.ts",
+    "cli": "tsx src/cli.ts"
+  },
+  "keywords": ["mcp", "test", "automation"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "chokidar": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

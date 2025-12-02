@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mcp-debugger": {
+      "command": "node",
+      "args": ["C:\\Users\\oldmoon\\workspace\\mcp-debugger\\dist\\index.js"],
+      "env": {}
+    }
+  }
+}

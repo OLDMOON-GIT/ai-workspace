@@ -13,7 +13,6 @@
     "dev": "tsx src/index.ts",
     "worker": "tsx src/cli.ts",
     "monitor": "tsx src/monitor.ts",
-    "auto-fix": "tsx src/auto-fix.ts",
     "gen-test": "tsx src/test-generator.ts",
     "analyze": "tsx src/failure-analyzer.ts"
   },
@@ -21,6 +20,7 @@
     "@modelcontextprotocol/sdk": "^0.5.0",
     "better-sqlite3": "^9.4.3",
     "chokidar": "^3.5.3",
+    "mysql2": "^3.15.3",
     "typescript": "^5.3.3"
   },
   "devDependencies": {

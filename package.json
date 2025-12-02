@@ -1,8 +1,15 @@
 {
+  "scripts": {
+    "auto:test": "node automation/run-ui-check.js",
+    "auto:bugs": "node automation/bug-worker.js list",
+    "auto:run": "node automation/auto-suite.js",
+    "debug": "node automation/auto-suite.js @디버깅",
+    "디버깅": "node automation/auto-suite.js @디버깅"
+  },
   "devDependencies": {
     "playwright": "^1.56.1"
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1"
+    "mysql2": "^3.15.3"
   }
 }

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mcp-title-patterns": {
+      "command": "npx",
+      "args": ["tsx", "C:\\Users\\oldmoon\\workspace\\mcp-title-patterns\\src\\index.ts"]
+    }
+  }
+}

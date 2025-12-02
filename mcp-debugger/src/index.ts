@@ -33,6 +33,7 @@ import {
   removeLogSource,
   ErrorItem
 } from './db.js';
+import { bugClaim, bugList, bugUpdate, formatBug as formatBugRecord } from './bug-bridge.js';
 
 // MCP Server 생성
 const server = new Server(
@@ -85,10 +86,95 @@ ${error.stack_trace}
   return output;
 }
 
+const BUG_STATUS_OPTIONS = ['open', 'in_progress', 'resolved', 'closed'];
+const BUG_LIST_STATUS_OPTIONS = [...BUG_STATUS_OPTIONS, 'all'];
+
 // MCP 도구 등록
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
+      // ==================== 버그 DB (MySQL) ====================
+      {
+        name: "bug.list",
+        description: "MySQL bugs 테이블을 조회합니다. 상태별 필터/페이징 지원.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            status: {
+              type: "string",
+              enum: BUG_LIST_STATUS_OPTIONS,
+              description: "open|in_progress|resolved|closed|all (기본 open)"
+            },
+            limit: {
+              type: "number",
+              description: "최대 조회 개수 (1~1000, 기본 20)"
+            }
+          }
+        }
+      },
+      {
+        name: "bug.claim",
+        description: "열린 버그를 하나 가져와 in_progress로 전환합니다. (MySQL 트랜잭션)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            worker: {
+              type: "string",
+              description: "워커/담당자 식별자 (기본 mcp-debugger)"
+            }
+          }
+        }
+      },
+      {
+        name: "bug.update",
+        description: "버그 상태와 노트를 업데이트합니다.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "Bug ID (예: BTS-...)"
+            },
+            status: {
+              type: "string",
+              enum: BUG_STATUS_OPTIONS,
+              description: "open|in_progress|resolved|closed"
+            },
+            note: {
+              type: "string",
+              description: "변경 내용/메모 (선택)"
+            },
+            worker: {
+              type: "string",
+              description: "워커/담당자 식별자 (기본 mcp-debugger)"
+            }
+          },
+          required: ["id", "status"]
+        }
+      },
+      {
+        name: "@디버깅",
+        description: "티켓을 하나 즉시 할당하고 후속 bug.update(resolved, note) 흐름을 트리거합니다.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            note: {
+              type: "string",
+              description: "바로 해결 처리할 때 기록할 메모 (없으면 처리만 할당)"
+            },
+            worker: {
+              type: "string",
+              description: "워커/담당자 식별자 (기본 mcp-debugger)"
+            },
+            status: {
+              type: "string",
+              enum: BUG_STATUS_OPTIONS,
+              description: "note가 있을 때 설정할 상태 (기본 resolved)"
+            }
+          }
+        }
+      },
+
       // ==================== 에러 관리 ====================
       {
         name: "add_error",
@@ -353,6 +439,173 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      // ==================== 버그 DB (MySQL) ====================
+      case "bug.list": {
+        const status = (args?.status as string) || 'open';
+        const limit = (args?.limit as number) || 20;
+
+        if (!BUG_LIST_STATUS_OPTIONS.includes(status)) {
+          return {
+            content: [{
+              type: "text",
+              text: `지원하지 않는 상태입니다: ${status} (가능: ${BUG_LIST_STATUS_OPTIONS.join(', ')})`
+            }],
+            isError: true
+          };
+        }
+
+        const bugs = await bugList(status, limit);
+        if (!bugs || bugs.length === 0) {
+          return {
+            content: [{
+              type: "text",
+              text: `버그가 없습니다. (status=${status})`
+            }]
+          };
+        }
+
+        const listText = bugs.map((bug, idx) => {
+          const lines = [
+            `${idx + 1}. ${bug.id} [${bug.status}] ${bug.title}`,
+            bug.assigned_to ? `   👤 ${bug.assigned_to}` : '   👤 (unassigned)',
+            `   🕒 ${bug.created_at || ''}`,
+            bug.log_path ? `   📄 ${bug.log_path}` : '',
+            bug.screenshot_path ? `   🖼️ ${bug.screenshot_path}` : '',
+            bug.video_path ? `   🎞️ ${bug.video_path}` : '',
+            bug.trace_path ? `   🧵 ${bug.trace_path}` : '',
+            bug.summary ? `   📝 ${bug.summary}` : ''
+          ].filter(Boolean);
+          return lines.join('\n');
+        }).join('\n\n');
+
+        return {
+          content: [{
+            type: "text",
+            text: `## 버그 목록 (${bugs.length}건, status=${status})\n\n${listText}`
+          }]
+        };
+      }
+
+      case "bug.claim": {
+        const worker = (args?.worker as string) || 'mcp-debugger';
+        const bug = await bugClaim(worker);
+
+        if (!bug) {
+          return {
+            content: [{
+              type: "text",
+              text: "열린 버그가 없습니다. 🎉"
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `버그를 할당받았습니다. (worker=${worker})\n\n${formatBugRecord(bug)}\n\n🛠️ 처리 후 bug.update { id: "${bug.id}", status: "resolved", note: "..." }를 호출하세요.`
+          }]
+        };
+      }
+
+      case "bug.update": {
+        const id = args?.id as string;
+        const status = (args?.status as string) || 'resolved';
+        const note = args?.note as string | undefined;
+        const worker = (args?.worker as string) || 'mcp-debugger';
+
+        if (!id) {
+          return {
+            content: [{ type: "text", text: "id가 필요합니다." }],
+            isError: true
+          };
+        }
+
+        if (!status || !BUG_STATUS_OPTIONS.includes(status)) {
+          return {
+            content: [{
+              type: "text",
+              text: `유효하지 않은 상태입니다: ${status} (가능: ${BUG_STATUS_OPTIONS.join(', ')})`
+            }],
+            isError: true
+          };
+        }
+
+        const result = await bugUpdate(id, worker, status, note);
+        if (!result?.ok) {
+          const reason = result?.reason || 'unknown';
+          const reasonText = reason.startsWith('assigned_to_')
+            ? `이미 다른 워커가 담당 중입니다 (${reason.replace('assigned_to_', '')})`
+            : reason === 'already_done'
+              ? '이미 완료된 버그입니다.'
+              : reason === 'not_found'
+                ? '버그를 찾을 수 없습니다.'
+                : `업데이트 실패: ${reason}`;
+
+          return {
+            content: [{ type: "text", text: reasonText }],
+            isError: true
+          };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `버그가 업데이트되었습니다. (status=${status}, worker=${worker})${note ? `\n📝 ${note}` : ''}\n\n${result.bug ? formatBugRecord(result.bug) : ''}`
+          }]
+        };
+      }
+
+      case "@디버깅": {
+        const worker = (args?.worker as string) || 'mcp-debugger';
+        const note = args?.note as string | undefined;
+        const status = (args?.status as string) || 'resolved';
+
+        const bug = await bugClaim(worker);
+        if (!bug) {
+          return {
+            content: [{ type: "text", text: "할당할 열린 버그가 없습니다." }]
+          };
+        }
+
+        if (!note) {
+          return {
+            content: [{
+              type: "text",
+              text: `🎯 디버깅 티켓 할당: ${bug.id} (worker=${worker})\n\n${formatBugRecord(bug)}\n\n➡️ 수정 후 bug.update { id: "${bug.id}", status: "resolved", note: "..." } 호출로 완료를 기록하세요.`
+            }]
+          };
+        }
+
+        if (!BUG_STATUS_OPTIONS.includes(status)) {
+          return {
+            content: [{
+              type: "text",
+              text: `유효하지 않은 상태입니다: ${status} (가능: ${BUG_STATUS_OPTIONS.join(', ')})`
+            }],
+            isError: true
+          };
+        }
+
+        const result = await bugUpdate(bug.id, worker, status, note);
+        if (!result?.ok) {
+          const reason = result?.reason || 'unknown';
+          return {
+            content: [{
+              type: "text",
+              text: `티켓은 할당했지만 상태 업데이트에 실패했습니다. (reason=${reason})\n\n${formatBugRecord(bug)}`
+            }],
+            isError: true
+          };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `🎯 디버깅 티켓 처리 완료 (auto)\n\n${formatBugRecord(result.bug || bug)}\n\n📝 ${note}`
+          }]
+        };
+      }
+
       // ==================== 에러 관리 ====================
       case "add_error": {
         const error = addErrorManually(

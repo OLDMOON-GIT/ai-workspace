@@ -1,0 +1,44 @@
+{
+  "generated_at": "2025-11-27T18:23:58.491Z",
+  "total_suggestions": 3,
+  "by_category": {
+    "file_not_found": 1,
+    "timeout": 1,
+    "permission": 1
+  },
+  "suggestions": [
+    {
+      "task_id": "25dcb137-9e2c-4b3c-a842-75cf18005dde",
+      "task_type": "image",
+      "error_category": "file_not_found",
+      "error_message": "story.json 파일을 읽을 수 없습니다: C:\\Users\\oldmoon\\workspace\\trend-video-backend\\tasks\\25dcb137-9e2c-4b3c-a842-75cf18005dde\\story.json - ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-backend\\tasks\\25dcb137-9e2c-4b3c-a842-75cf18005dde\\story.json'",
+      "suggestion": "파일 경로 확인 필요: C:\\Users\\oldmoon\\workspace\\trend-video-backend\\tasks\\25dcb137-9e2c-4b3c-a842-75cf18005dde\\story.json. 파일이 존재하는지 확인하거나 생성 로직 추가",
+      "code_location": null,
+      "log_file": "task_queue.error",
+      "priority": "medium",
+      "created_at": "2025-11-27T18:23:58.484Z"
+    },
+    {
+      "task_id": "a991eb67-ed6c-4712-9f6f-1048a7e2c37a",
+      "task_type": "video",
+      "error_category": "timeout",
+      "error_message": "Processing timeout (10�� �ʰ�)",
+      "suggestion": "처리 시간 초과. 타임아웃 값 조정 또는 처리 최적화 필요",
+      "code_location": null,
+      "log_file": "task_queue.error",
+      "priority": "medium",
+      "created_at": "2025-11-27T18:23:58.489Z"
+    },
+    {
+      "task_id": "397612bc-60f8-4fc5-90a5-4385b7f790d9",
+      "task_type": "youtube",
+      "error_category": "permission",
+      "error_message": "[2025-11-27T17:31:48.403Z] [INFO] 🔄 📝 총 4개 씬 처리 예정",
+      "suggestion": "권한 오류. 파일/디렉토리 권한 또는 API 접근 권한 확인 필요",
+      "code_location": null,
+      "log_file": "script.log",
+      "priority": "low",
+      "created_at": "2025-11-27T18:23:58.487Z"
+    }
+  ]
+}

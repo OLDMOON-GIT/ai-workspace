@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Retry API</title>
+</head>
+<body>
+  <h1>Test Retry API</h1>
+  <button onclick="testRetry()">Click to Retry</button>
+  <pre id="result"></pre>
+
+  <script>
+    async function testRetry() {
+      const resultEl = document.getElementById('result');
+      resultEl.textContent = 'Calling API...';
+
+      try {
+        const res = await fetch('http://localhost:2000/api/automation/retry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            taskId: 'eaaaacd5-a59a-4e38-b904-79f677696470',
+            preview: false
+          })
+        });
+
+        const data = await res.json();
+        resultEl.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        resultEl.textContent = 'Error: ' + error.message;
+      }
+    }
+  </script>
+</body>
+</html>

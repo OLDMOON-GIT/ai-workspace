@@ -49,6 +49,9 @@ build/
 .upload_progress
 .upload_complete
 .upload_failed
+.frontend_pid
+.schema_hash
+.last_login_setup
 
 # 캐시
 __pycache__/

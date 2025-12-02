@@ -10,13 +10,13 @@ if "%1"=="-f" set FORCE_MODE=1
 if %FORCE_MODE%==1 (
     echo ============================================================
     echo   [초기 설치 모드] 강제 업데이트 + Server Start
-    echo   ⚠️  로컬 변경사항이 모두 덮어씌워집니다!
+    echo   주의: 로컬 변경사항이 모두 덮어씌워집니다
     echo ============================================================
 ) else (
     echo ============================================================
     echo   [개발 모드] 안전 업데이트 + Server Start
-    echo   ✅ 로컬 변경사항이 보존됩니다
-    echo   💡 강제 업데이트: az.bat --force
+    echo   로컬 변경사항이 보존됩니다
+    echo   강제 업데이트: az.bat --force
     echo ============================================================
 )
 echo.
@@ -122,22 +122,93 @@ if %FORCE_MODE%==1 (
     echo 초기 셋업 완료!
 )
 
+REM 초기 실행 시 자동으로 서버 시작
+call :START_SERVER
+
+:MENU
+echo.
+echo ============================================================
+echo [1] 서버 재시작 (기본값)
+echo [2] UI 테스트 재실행
+echo [3] 서버 중지
+echo [4] 종료
+echo ============================================================
+set /p choice="선택하세요 (1-4, 엔터=1): "
+
+REM 빈 입력이면 기본값 1
+if "%choice%"=="" set choice=1
+
+if "%choice%"=="1" goto RESTART_SERVER
+if "%choice%"=="2" goto RUN_TEST
+if "%choice%"=="3" goto STOP_SERVER
+if "%choice%"=="4" goto END
+
+echo 잘못된 선택입니다.
+goto MENU
+
+:RESTART_SERVER
+call :STOP_SERVER
+call :START_SERVER
+goto MENU
+
+:RUN_TEST
+echo.
+echo UI 테스트 실행 중...
+echo ============================================================
+node automation/auto-suite.js --url http://localhost:2000 --name az-smoke --worker az
+echo.
+pause
+goto MENU
+
+:STOP_SERVER
+echo.
+echo 서버 중지 중...
+echo ============================================================
+powershell -Command "Get-NetTCPConnection -LocalPort 2000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+timeout /t 2 /nobreak >nul
+echo 서버가 중지되었습니다.
+goto :eof
+
+:START_SERVER
 echo.
 echo 서버 자동 재시작 중...
 echo ============================================================
 
 REM 포트 2000 사용 중인 프로세스 종료
-echo [1/2] 포트 2000 사용 중인 프로세스 종료...
+echo [1/4] 포트 2000 사용 중인 프로세스 종료...
 powershell -Command "Get-NetTCPConnection -LocalPort 2000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 
-echo [2/2] Frontend 서버 + 통합 워커 재시작 중...
+echo [2/4] Next.js 빌드 캐시 삭제 (.next)...
+if exist "%~dp0trend-video-frontend\.next" (
+    rmdir /s /q "%~dp0trend-video-frontend\.next"
+    echo    .next 디렉토리 삭제됨
+) else (
+    echo    .next 없음 [SKIP]
+)
+
+echo [3/4] Frontend 서버 + 통합 워커 런치...
 cd /d "%~dp0trend-video-frontend"
 start "Trend Video Frontend" cmd /k "npm run dev"
 cd /d "%~dp0"
 
+echo [4/4] 자동 UI 체크 + 버그 리포트...
+timeout /t 5 /nobreak >nul
+REM MCP Debugger 서버 시작 (@디버깅 툴용)
+cd /d "%~dp0mcp-debugger"
+start "MCP Debugger" cmd /k "npm run start"
+cd /d "%~dp0"
+node automation/auto-suite.js --url http://localhost:2000 --name az-smoke --worker az
+
 echo.
-echo ✅ 서버가 재시작되었습니다!
+echo 모든 서버가 런치되었습니다
 echo    Frontend: http://localhost:2000
-echo    Workers: 통합 워커 (Script + Image + Video + YouTube) - 프로세스 내장
+echo    Workers : 통합 워커 (Script + Image + Video + YouTube) - 로그 창
+echo    AutoRun : automation/auto-suite.js (UI 체크 + 버그 리스팅)
 echo.
+goto :eof
+
+:END
+echo.
+echo 종료합니다.
+exit /b 0

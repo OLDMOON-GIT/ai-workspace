@@ -1,0 +1,23 @@
+{
+  "email": {
+    "enabled": true,
+    "smtp": {
+      "host": "smtp.gmail.com",
+      "port": 587,
+      "secure": false,
+      "user": "",
+      "pass": ""
+    },
+    "to": "",
+    "from": "MCP 패턴 시스템 <noreply@mcp-patterns.local>"
+  },
+  "_설명": {
+    "Gmail 사용법": [
+      "1. Google 계정 > 보안 > 2단계 인증 활성화",
+      "2. Google 계정 > 보안 > 앱 비밀번호 생성",
+      "3. user에 Gmail 주소 입력",
+      "4. pass에 앱 비밀번호 입력 (16자리)",
+      "5. to에 받을 이메일 주소 입력"
+    ]
+  }
+}

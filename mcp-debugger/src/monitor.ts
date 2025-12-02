@@ -17,6 +17,7 @@ import {
   getErrorStats,
   getPendingErrors
 } from './db.js';
+import { bugCreate } from './bug-bridge.js';
 
 // 워커 풀 관리
 const MAX_WORKERS = 20;
@@ -123,6 +124,16 @@ const ERROR_PATTERNS = [
     type: 'http_error',
     severity: 'error' as const
   },
+  {
+    pattern: /\b(?:GET|POST|PUT|PATCH|DELETE|OPTIONS)\s+[^\s]+\s+(?:500|502|503|504)\b/i,
+    type: 'http_error',
+    severity: 'error' as const
+  },
+  {
+    pattern: /\b(?:GET|POST|PUT|PATCH|DELETE|OPTIONS)\s+([^\s]+story[^\s]*)\s+404\b/i,
+    type: 'file_missing',
+    severity: 'warning' as const
+  },
   // SQL 에러
   {
     pattern: /(?:SQLITE_ERROR|no such table|syntax error|SQL error):\s*(.+)/i,
@@ -145,6 +156,16 @@ const ERROR_PATTERNS = [
   {
     pattern: /(?:failed|Failed|FAILED)(?:\s+to|\s*:)\s*(.+)/,
     type: 'failure',
+    severity: 'error' as const
+  },
+  {
+    pattern: /(?:파싱 실패|처리 실패|파일 없음|실패|오류|에러)[:\s-]+\s*(.+)/,
+    type: 'logged_error',
+    severity: 'error' as const
+  },
+  {
+    pattern: /JSON5?:\s*(invalid|unexpected|Unexpected)[^\n]+/i,
+    type: 'runtime_error',
     severity: 'error' as const
   },
   // Python 에러
@@ -324,6 +345,22 @@ class LogMonitor {
 
         if (added) {
           console.log(`🚨 에러 감지: [${type}] ${errorMessage.substring(0, 80)}...`);
+
+          // MySQL bugs 테이블에도 자동 등록
+          bugCreate({
+            title: `[${type}] ${errorMessage.substring(0, 100)}`,
+            summary: errorMessage.substring(0, 500),
+            logPath: errorFilePath,
+            metadata: {
+              error_id: added.id,
+              source: source,
+              severity: severity,
+              stack_trace: stackTrace?.substring(0, 2000),
+              line_number: lineNumber
+            }
+          }).catch(err => {
+            console.error('❌ Bug 생성 실패:', err.message);
+          });
         }
 
         return;

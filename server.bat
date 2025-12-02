@@ -34,25 +34,14 @@ echo.
 echo 서버 시작...
 echo ============================================================
 
-REM 기존 Trend Video 프론트엔드 세션만 종료
-echo [1/3] 기존 Trend Video Frontend 콘솔 종료...
-call :STOP_FRONTEND_SESSION
-
-echo [2/3] 포트 %FRONTEND_PORT% 사용 여부 확인...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R /C:":%FRONTEND_PORT%[ ]" ^| findstr LISTENING') do (
-    echo    [INFO] 포트 %FRONTEND_PORT%을 사용 중인 프로세스(PID: %%a^) 종료 중...
-    taskkill /F /PID %%a >nul 2>&1
-    if !errorlevel!==0 (
-        echo    프로세스 종료 완료
-        timeout /t 2 /nobreak >nul
-    ) else (
-        echo    [WARNING] 프로세스 종료 실패 (관리자 권한 필요할 수 있음^)
-    )
-)
+REM 기존 Frontend 프로세스 종료 (포트 기반)
+echo [1/2] 포트 %FRONTEND_PORT% 사용 중인 프로세스 종료...
+powershell -Command "Get-NetTCPConnection -LocalPort %FRONTEND_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+timeout /t 2 /nobreak >nul
 
 call :INIT_MYSQL
 
-echo [3/3] Frontend 서버 시작 중...
+echo [2/2] Frontend 서버 + 통합 워커 시작 중...
 cd /d "%~dp0trend-video-frontend"
 start "%FRONTEND_TITLE%" cmd /k "npm run dev"
 cd /d "%~dp0"
@@ -60,6 +49,7 @@ cd /d "%~dp0"
 echo.
 echo 서버가 시작되었습니다!
 echo    Frontend: http://localhost:%FRONTEND_PORT%
+echo    Workers: 통합 워커 (Script + Image + Video + YouTube) - 프로세스 내장
 echo.
 pause
 goto MENU
@@ -68,12 +58,9 @@ goto MENU
 echo.
 echo 서버 중지...
 echo ============================================================
-call :STOP_FRONTEND_SESSION
-if "%STOPPED_FRONTEND%"=="1" (
-    echo Trend Video Frontend 콘솔을 종료했습니다.
-) else (
-    echo 종료할 Trend Video Frontend 콘솔이 없습니다.
-)
+echo 포트 %FRONTEND_PORT% 사용 중인 프로세스 종료...
+powershell -Command "Get-NetTCPConnection -LocalPort %FRONTEND_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+timeout /t 2 /nobreak >nul
 
 netstat -ano | findstr /R /C:":%FRONTEND_PORT%[ ]" | findstr LISTENING >nul
 if %errorlevel%==0 (
@@ -103,17 +90,6 @@ if %errorlevel%==0 (
 echo.
 pause
 goto MENU
-
-:STOP_FRONTEND_SESSION
-set "STOPPED_FRONTEND=0"
-tasklist /FI "IMAGENAME eq cmd.exe" /FI "WINDOWTITLE eq %FRONTEND_TITLE%" 2>nul | find "%FRONTEND_TITLE%" > nul
-if %errorlevel%==0 (
-    taskkill /F /T /FI "WINDOWTITLE eq %FRONTEND_TITLE%" > nul 2>nul
-    if %errorlevel%==0 (
-        set "STOPPED_FRONTEND=1"
-    )
-)
-exit /b 0
 
 :END
 echo.
