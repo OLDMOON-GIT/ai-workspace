@@ -4,6 +4,55 @@
 
 ---
 
+## 🔴 BTS-0000028: Image 단계에서 image.log 파일에 로그가 저장되지 않음
+
+**발생일:** 2025-12-03
+
+**상태:** ✅ **해결됨**
+
+**심각도:** 🟡 **MEDIUM** - 디버깅 불편, 기능 자체는 정상 작동
+
+**증상:**
+- Image 단계 실행 중 Python 출력이 콘솔과 DB에만 저장됨
+- `tasks/{taskId}/image.log` 파일이 생성되지 않거나 비어있음
+- 디버깅 시 로그 확인 불가
+
+**근본 원인:**
+- `unified-worker.js:513-524` Image 단계에서 `this.appendLog`만 호출 (DB 저장)
+- `appendToLogFile` 함수 호출 누락 (파일 저장)
+- YouTube 단계(line 702, 711)에서는 appendToLogFile 사용 중
+
+**수정 방법:**
+`src/workers/unified-worker.js:515, 523` - appendToLogFile 추가
+
+```javascript
+// stdout 핸들러
+pythonProcess.stdout.on('data', (data) => {
+  const text = data.toString();
+  process.stdout.write(`${emoji} ${text}`);
+  this.appendLog(taskId, type, text.trim()).catch(() => {});
+  appendToLogFile(taskId, 'image', text.trim()); // 추가
+});
+
+// stderr 핸들러
+pythonProcess.stderr.on('data', (data) => {
+  const text = data.toString();
+  errorOutput += text;
+  process.stderr.write(`${emoji} ⚠️ ${text}`);
+  this.appendLog(taskId, type, `⚠️ ${text.trim()}`).catch(() => {});
+  appendToLogFile(taskId, 'image', `⚠️ ${text.trim()}`); // 추가
+});
+```
+
+**재발 방지:**
+- Script, Video 단계는 API 호출이므로 해당 없음 (API 핸들러 내부에서 로깅)
+- Python 프로세스 직접 실행하는 단계(Image, YouTube)에서는 반드시 appendToLogFile 호출
+
+**관련 파일:**
+- `src/workers/unified-worker.js:513-524`
+
+---
+
 ## 🔴 BTS-0000027: unified-worker에서 parseJsonSafely를 this.parseJsonSafely로 잘못 호출
 
 **발생일:** 2025-12-03
