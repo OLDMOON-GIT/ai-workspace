@@ -4,6 +4,152 @@
 
 ---
 
+## 🟢 BTS-0000034: Flow 이미지 생성 모드 추가
+
+**발생일:** 2025-12-03
+
+**상태:** 🟡 **부분완료** - UI/API/Worker 완료, Python 구현 대기
+
+**심각도:** 🟢 **ENHANCEMENT** - 신규 기능 추가
+
+**요청:**
+Google Labs의 Flow 도구를 이미지 생성 모드에 추가
+- URL: https://labs.google/fx/ko/tools/flow/project/
+
+**현재 이미지 모드:**
+1. ImageFX + Whisk: 첫 이미지를 ImageFX로 생성 후 Whisk에 업로드
+2. Whisk만 사용: Whisk로만 이미지 생성
+
+**추가할 모드:**
+3. Flow: Google Labs Flow로 이미지 생성
+
+**구현 계획:**
+
+**1. Frontend (automation/page.tsx:5757-5796)**
+```typescript
+// 기존: executeImageCrawling(useImageFX: boolean)
+// 변경: executeImageCrawling(imageMode: 'imagefx' | 'whisk' | 'flow')
+
+// 모달에 Flow 버튼 추가
+<button onClick={() => executeImageCrawling('flow')}>
+  🎯 Flow
+  <p>Google Labs Flow로 이미지 생성</p>
+</button>
+```
+
+**2. API (/api/images/crawl/route.ts)**
+```typescript
+// useImageFX 대신 imageMode 파라미터 사용
+const { scenes, contentId, format, imageMode } = await req.json();
+// story.json에 imageMode 저장
+```
+
+**3. Worker (image-worker.ts:122, 176-212)**
+```typescript
+// metadata에서 imageMode 읽기
+const { imageMode } = metadata || {};
+// Python에 imageMode 전달
+if (imageMode === 'imagefx') pythonArgs.push('--use-imagefx');
+else if (imageMode === 'flow') pythonArgs.push('--use-flow');
+```
+
+**4. Backend (image_crawler_working.py)**
+```python
+# --use-flow 인자 추가
+parser.add_argument('--use-flow', action='store_true', help='Flow로 이미지 생성')
+
+# Flow 페이지 접속 및 이미지 생성 함수 추가
+def generate_image_with_flow(driver, prompt, aspect_ratio):
+    driver.get('https://labs.google/fx/ko/tools/flow/project/')
+    # Flow UI 자동화 로직...
+```
+
+**완료된 작업:**
+
+1. ✅ **Frontend (automation/page.tsx)**
+   - executeImageCrawling 함수 시그니처 변경: `boolean` → `'imagefx' | 'whisk' | 'flow'`
+   - 모달에 Flow 버튼 추가 (오렌지-레드 그라데이션, NEW 뱃지)
+   - API에 imageMode 전달
+
+2. ✅ **API (/api/images/crawl/route.ts)**
+   - useImageFX → imageMode 파라미터 변경
+   - story.json metadata에 imageMode 저장
+   - Python 스크립트에 --use-flow 플래그 전달
+
+3. ✅ **Worker (unified-worker.js)**
+   - metadata.imageMode 지원
+   - 기존 useImageFX 하위호환 유지
+   - Python args에 --use-flow 추가
+
+4. ✅ **Backend (image_crawler_working.py)**
+   - --use-flow 인자 추가
+   - main 함수에 use_flow 파라미터 추가
+   - TODO 주석으로 구현 위치 마킹
+
+**미완료 작업:**
+
+1. ⏳ **Flow UI 자동화 구현**
+   - `https://labs.google/fx/ko/tools/flow/project/` 접속
+   - 프롬프트 입력 및 이미지 생성 자동화
+   - 이미지 다운로드 로직
+   - 현재: Whisk 폴백 메시지 출력
+
+**수정된 파일:**
+- `trend-video-frontend/src/app/automation/page.tsx:1983, 1990, 2014-2023, 5759, 5779, 5798-5817`
+- `trend-video-frontend/src/app/api/images/crawl/route.ts:40, 80, 117-133`
+- `trend-video-frontend/src/workers/unified-worker.js:499-513`
+- `trend-video-backend/src/image_crawler/image_crawler_working.py:1913, 1921-1927, 2018-2030, 2922, 2932`
+
+---
+
+## 🔴 BTS-0000033: 재시도 버튼 클릭 시 type/status 업데이트 안 됨
+
+**발생일:** 2025-12-03
+
+**상태:** ✅ **해결됨**
+
+**심각도:** 🔴 **CRITICAL** - 재시도 기능 완전 작동 불가
+
+**증상:**
+- 재시도 버튼 클릭 시 로그에만 "재시도: youtube(failed) → youtube 직접 실행" 표시
+- task_queue의 type과 status가 실제로는 업데이트되지 않음
+- 상태가 계속 failed로 남아있어 재시도가 작동하지 않음
+
+**근본 원인:**
+- retry API가 `task_queue` 업데이트 시 `status = 'processing'`으로 설정
+- Worker는 status='waiting'인 작업만 처리하도록 설계됨
+- Worker가 락 획득 시도 시 status='processing'이므로 거부
+- 에러: "❌ 락 획득 실패: 현재 status=processing (이미 처리 중이거나 완료됨)"
+- 결과: 로그만 찍히고 실제 실행은 안 됨
+
+**수정 방법:**
+`src/app/api/automation/retry/route.ts:326` 수정
+
+```typescript
+// ❌ 잘못된 코드 (Worker가 락을 획득할 수 없음)
+UPDATE task_queue
+SET type = ?, status = 'processing', error = NULL
+WHERE task_id = ?
+
+// ✅ 수정된 코드 (Worker가 자연스럽게 처리)
+UPDATE task_queue
+SET type = ?, status = 'waiting', error = NULL
+WHERE task_id = ?
+```
+
+**수정된 파일:**
+1. `src/app/api/automation/retry/route.ts:323-328` - status 'processing' → 'waiting'
+2. `src/app/api/automation/retry/route.ts:348-349` - 로그 메시지 업데이트
+
+**재발 방지:**
+- task_queue 업데이트 시 `status = 'waiting'` 사용 (Worker가 처리)
+- `status = 'processing'`은 Worker가 직접 설정하는 것이므로 수동 설정 금지
+- forceType 방식(정상 작동)과 동일한 패턴 사용
+
+**상세 문서:** `BTS-0000033.md`
+
+---
+
 ## 🔴 BTS-0000032: Next.js 빌드 캐시 손상으로 서버 시작 실패
 
 **발생일:** 2025-12-03
