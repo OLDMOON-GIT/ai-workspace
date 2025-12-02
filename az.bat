@@ -123,8 +123,21 @@ if %FORCE_MODE%==1 (
 )
 
 echo.
-echo server.bat 실행 중...
-echo.
+echo 서버 자동 재시작 중...
+echo ============================================================
 
-REM server.bat 호출
-call server.bat
+REM 포트 2000 사용 중인 프로세스 종료
+echo [1/2] 포트 2000 사용 중인 프로세스 종료...
+powershell -Command "Get-NetTCPConnection -LocalPort 2000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+timeout /t 2 /nobreak >nul
+
+echo [2/2] Frontend 서버 + 통합 워커 재시작 중...
+cd /d "%~dp0trend-video-frontend"
+start "Trend Video Frontend" cmd /k "npm run dev"
+cd /d "%~dp0"
+
+echo.
+echo ✅ 서버가 재시작되었습니다!
+echo    Frontend: http://localhost:2000
+echo    Workers: 통합 워커 (Script + Image + Video + YouTube) - 프로세스 내장
+echo.
