@@ -4,6 +4,98 @@
 
 ---
 
+## 🔴 BTS-0000032: Next.js 빌드 캐시 손상으로 서버 시작 실패
+
+**발생일:** 2025-12-03
+
+**상태:** ✅ **해결됨**
+
+**심각도:** 🔴 **CRITICAL** - 서버가 완전히 동작하지 않음
+
+**증상:**
+- az.bat 실행 후 Next.js 서버 시작 시 MODULE_NOT_FOUND 에러 발생
+- `Error: Cannot find module '../chunks/ssr/[turbopack]_runtime.js'`
+- `Error: ENOENT: no such file or directory, open '.next/dev/server/app/api/.../app-paths-manifest.json'`
+- 여러 API route가 컴파일 실패
+- 반복적으로 발생 ("아까도 그냥 깨졌는데?")
+
+**근본 원인:**
+- az.bat 실행 중 또는 직후 .next 폴더 캐시가 손상됨
+- Next.js Turbopack 빌드 캐시의 manifest 파일들이 불완전한 상태로 남음
+- 포트 강제 종료 후 즉시 재시작하면서 빌드 상태가 중간에 끊김 가능성
+
+**수정 방법:**
+`.next` 폴더 완전 삭제 후 Next.js가 자동으로 재빌드하도록 함
+
+```bash
+cd trend-video-frontend
+powershell -Command "if (Test-Path .next) { Remove-Item -Recurse -Force .next }"
+# npm run dev가 자동으로 .next 재생성
+```
+
+**재발 방지:**
+- az.bat에서 포트 종료 후 충분한 대기 시간 확보 필요 (현재 2초)
+- 서버 재시작 전 .next 폴더 정리 옵션 고려
+- 또는 graceful shutdown 방식으로 변경 필요
+
+**관련 파일:**
+- `az.bat:129-137` - 서버 재시작 로직
+- `.next/` - Next.js 빌드 캐시 디렉토리
+
+**User Quote:** "아까도 그냥 깨졌는데?" (반복 발생 확인)
+
+---
+
+## 🟡 BTS-0000025: 스케줄 시간 표시 버그 (타임존 문제)
+
+**발생일:** 2025-12-03
+
+**상태:** ✅ **해결됨**
+
+**심각도:** 🟡 **MEDIUM** - 스케줄 시간이 잘못 표시됨
+
+**증상:**
+- 등록 시간: 오전 1:41
+- 표시 시간: 오후 4:41 (3시간 차이)
+- 사용자가 입력한 시간과 실제 저장/표시 시간이 다름
+
+**근본 원인:**
+- `toISOString()`이 UTC로 변환하는 문제
+- datetime-local input → Date 객체 → toISOString() 시 UTC 변환 발생
+- 한국 시간(KST) = UTC+9, 3시간 차이는 부분적인 타임존 변환으로 추정
+
+**수정 방법:**
+4개 파일에서 `toISOString()` 사용 제거, 로컬 시간 메서드로 변경
+
+```typescript
+// ❌ 잘못된 방법 (UTC 변환)
+const scheduleTime = date.toISOString().replace('T', ' ').substring(0, 19);
+
+// ✅ 올바른 방법 (로컬 시간 유지)
+const year = date.getFullYear();
+const month = String(date.getMonth() + 1).padStart(2, '0');
+const day = String(date.getDate()).padStart(2, '0');
+const hours = String(date.getHours()).padStart(2, '0');
+const minutes = String(date.getMinutes()).padStart(2, '0');
+const seconds = String(date.getSeconds()).padStart(2, '0');
+const scheduleTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+```
+
+**수정된 파일:**
+1. `src/app/automation/page.tsx:1210-1217` - 새제목 등록
+2. `src/app/automation/page.tsx:1501-1508` - 스케줄 시간 업데이트
+3. `src/app/api/automation/force-execute/route.ts:45-53` - 즉시 실행
+4. `src/app/api/automation/calendar/route.ts:136-143` - 캘린더 스케줄
+
+**재발 방지:**
+- `toISOString()` 사용 금지 (UTC 변환됨)
+- MySQL datetime 변환 시 항상 로컬 시간 메서드 사용
+- 새로운 datetime 변환 코드 작성 시 타임존 검증 필수
+
+**상세 문서:** `BTS-0000025.md`
+
+---
+
 ## 🔴 BTS-0000031: 스케줄 시간이 과거로 설정되어 즉시 실행됨
 
 **발생일:** 2025-12-03
@@ -163,49 +255,46 @@ cd /d "%~dp0"
 
 ---
 
-## 🔴 BTS-0000028: Image 단계에서 image.log 파일에 로그가 저장되지 않음
+## 🔴 BTS-0000028: 모든 단계에서 로그 파일이 저장되지 않음
 
 **발생일:** 2025-12-03
 
-**상태:** ✅ **해결됨**
+**상태:** ✅ **해결됨** (Script/Video 단계 추가 완료)
 
 **심각도:** 🟡 **MEDIUM** - 디버깅 불편, 기능 자체는 정상 작동
 
 **증상:**
-- Image 단계 실행 중 Python 출력이 콘솔과 DB에만 저장됨
-- `tasks/{taskId}/image.log` 파일이 생성되지 않거나 비어있음
-- 디버깅 시 로그 확인 불가
+- ❌ Script: `tasks/{taskId}/script.log` 파일 없음
+- ❌ Video: `tasks/{taskId}/video.log` 파일 없음
+- ✅ Image: 517, 525번 라인에 추가되어 있음
+- ✅ YouTube: 854, 863, 917-920번 라인에 추가되어 있음
+- 로그가 콘솔과 DB에만 저장되고 파일로 저장되지 않음
 
 **근본 원인:**
-- `unified-worker.js:513-524` Image 단계에서 `this.appendLog`만 호출 (DB 저장)
-- `appendToLogFile` 함수 호출 누락 (파일 저장)
-- YouTube 단계(line 702, 711)에서는 appendToLogFile 사용 중
+- Script 단계(467번): `this.appendLog`만 호출, `appendToLogFile` 없음
+- Video 단계(576번): `this.appendLog`만 호출, `appendToLogFile` 없음
+- API 호출 방식이지만 unified-worker에서 로그를 받아서 기록하므로 파일 로깅도 필요함
 
 **수정 방법:**
-`src/workers/unified-worker.js:515, 523` - appendToLogFile 추가
+`src/workers/unified-worker.js:467, 576` - appendToLogFile 추가
 
 ```javascript
-// stdout 핸들러
-pythonProcess.stdout.on('data', (data) => {
-  const text = data.toString();
-  process.stdout.write(`${emoji} ${text}`);
-  this.appendLog(taskId, type, text.trim()).catch(() => {});
-  appendToLogFile(taskId, 'image', text.trim()); // 추가
-});
+// Script 단계 (467번 라인)
+for (const line of lines) {
+  console.log(`${emoji} ${line}`);
+  await this.appendLog(taskId, type, line.trim());
+  appendToLogFile(taskId, 'script', line.trim()); // 추가
+}
 
-// stderr 핸들러
-pythonProcess.stderr.on('data', (data) => {
-  const text = data.toString();
-  errorOutput += text;
-  process.stderr.write(`${emoji} ⚠️ ${text}`);
-  this.appendLog(taskId, type, `⚠️ ${text.trim()}`).catch(() => {});
-  appendToLogFile(taskId, 'image', `⚠️ ${text.trim()}`); // 추가
-});
+// Video 단계 (576번 라인)
+console.log(`${emoji} [${type}] ✅ API call completed`);
+await this.appendLog(taskId, type, `✅ 영상 생성 완료`);
+appendToLogFile(taskId, 'video', `✅ 영상 생성 완료`); // 추가
 ```
 
 **재발 방지:**
-- Script, Video 단계는 API 호출이므로 해당 없음 (API 핸들러 내부에서 로깅)
-- Python 프로세스 직접 실행하는 단계(Image, YouTube)에서는 반드시 appendToLogFile 호출
+- 모든 단계(script, image, video, youtube)에서 `appendLog` 호출 시 동시에 `appendToLogFile`도 호출
+- 새로운 단계 추가 시 로그 파일 저장 필수 체크
 
 **관련 파일:**
 - `src/workers/unified-worker.js:513-524`
