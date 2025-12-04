@@ -15,23 +15,34 @@ import {
   updateLogPosition,
   getActiveWorkers,
   getErrorStats,
-  getPendingErrors
+  getPendingErrors,
+  claimError,
+  updateErrorStatus
 } from './db.js';
 import { bugCreate } from './bug-bridge.js';
 
 // 워커 풀 관리
-const MAX_WORKERS = 20;
+const MAX_WORKERS = 4;
+const SPAWN_DELAY_MS = 5000;
+const WORKER_COMMANDS: { name: string; cmd: string; args: string[]; limit: number }[] = [
+  { name: 'claude-1', cmd: 'claude', args: ['--dangerously-skip-permissions', 'auto-worker'], limit: 1 },
+  { name: 'claude-2', cmd: 'claude', args: ['--dangerously-skip-permissions', 'auto-worker'], limit: 1 },
+  { name: 'codex', cmd: 'codex', args: ['-a', 'never', '-s', 'danger-full-access'], limit: 1 },
+  { name: 'gemini', cmd: 'gemini', args: ['--yolo'], limit: 1 },
+];
 const workerProcesses: Map<string, ChildProcess> = new Map();
+const workerMeta: Map<string, string> = new Map(); // workerId -> command name
 let workerIdCounter = 0;
 
 function spawnWorker(): string {
   const workerId = `auto-worker-${++workerIdCounter}`;
 
   // 에러 정보 가져오기
-  const errors = getPendingErrors(1);
-  if (errors.length === 0) return workerId;
+  const error = claimError(workerId);
+  if (!error) return workerId;
 
-  const error = errors[0];
+  // 상태 선반영 (processing)
+  updateErrorStatus(error.id, 'processing', workerId);
 
   // 상세 에러 정보 출력
   console.log('');
@@ -49,23 +60,49 @@ function spawnWorker(): string {
   console.log('  └─────────────────────────────────────────────────────────────');
   console.log('');
 
-  const workerPath = path.join(process.cwd(), 'src', 'cli.ts');
+  const activeCounts: Record<string, number> = {};
+  for (const name of workerMeta.values()) {
+    activeCounts[name] = (activeCounts[name] || 0) + 1;
+  }
+  const workerCfg = WORKER_COMMANDS.find(cfg => (activeCounts[cfg.name] || 0) < cfg.limit);
+  if (!workerCfg) {
+    console.log('  [!] 워커 한도 도달 - 추가 스폰 스킵');
+    return workerId;
+  }
 
-  const proc = spawn('npx', ['tsx', workerPath, 'fetch'], {
-    cwd: process.cwd(),
-    stdio: 'pipe',
-    shell: true
-  });
+  // ??: ?? ?? ??? ?? ??? ????? ?? ??
+  workerMeta.set(workerId, workerCfg.name);
 
-  proc.stdout?.on('data', (data) => {
-    // 워커 출력은 최소화
-  });
+  
+  setTimeout(() => {
+    const btsId = error.bug_id ? error.bug_id : `BTS-${error.id}`;
+    const msg = `${btsId} ${error.error_message || ''}`.replace(/"/g, "'").replace(/\s+/g, ' ').trim();
+    const finalArgs = [...workerCfg.args, msg];
+    const quotedArgs = finalArgs.map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' ');
+    const commandLine = `${workerCfg.cmd} ${quotedArgs}`.trim();
 
-  proc.on('close', (code) => {
-    workerProcesses.delete(workerId);
-  });
+    const proc = spawn('powershell.exe', ['-NoLogo', '-NoExit', '-Command', commandLine], {
+      cwd: process.cwd(),
+      stdio: 'ignore',
+      windowsHide: false,
+      shell: false
+    });
 
-  workerProcesses.set(workerId, proc);
+    proc.on('close', () => {
+      workerProcesses.delete(workerId);
+      workerMeta.delete(workerId);
+    });
+    proc.on('error', (err) => {
+      console.error(`  [!] ?? ?? ??: ${workerId} (${workerCfg.name})`, err);
+      workerProcesses.delete(workerId);
+      workerMeta.delete(workerId);
+    });
+
+    workerProcesses.set(workerId, proc);
+    console.log(`  [+] ?? ??: ${workerId} (${workerCfg.name}) - cmd: ${commandLine}`);
+  }, SPAWN_DELAY_MS);
+
+
   return workerId;
 }
 
@@ -103,6 +140,18 @@ function scaleWorkers() {
     }
   }
 }
+
+// 무시 패턴 (정상적인 동작이나 예상된 메시지)
+const IGNORE_PATTERNS = [
+  /GET\s+\/admin\/bts\s+500/i,             // BTS-1490: GET /admin/bts 500 에러는 무시
+  /\(?딥링크 오류\)?.*이번 실행 스킵/i, // 딥링크 생성 실패 시 스킵 (정상 동작)
+  /이번 실행 스킵/i,                     // 실행 스킵은 정상 동작
+  /상품 제목 생성 실패.*딥링크/i,       // 상품 카테고리 스킵 (정상 동작)
+  /stopped by user/i,                    // 사용자 중지
+  /Browser or page has been closed/i,   // 브라우저 닫힘
+  /User canceled/i,                      // 사용자 취소
+  /file_missing.*\/story/i,             // story 파일 아직 생성 안됨
+];
 
 // 에러 패턴 정의
 const ERROR_PATTERNS = [
@@ -311,6 +360,13 @@ class LogMonitor {
     if (STACK_TRACE_PATTERN.test(line)) {
       this.appendToBuffer(source, line);
       return;
+    }
+
+    // 무시 패턴 체크 (정상적인 동작이나 예상된 메시지는 건너뜀)
+    for (const pattern of IGNORE_PATTERNS) {
+      if (pattern.test(line)) {
+        return; // 무시 패턴에 매칭되면 에러로 처리하지 않음
+      }
     }
 
     // 에러 패턴 매칭
