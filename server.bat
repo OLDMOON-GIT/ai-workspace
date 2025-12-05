@@ -43,7 +43,8 @@ call :INIT_MYSQL
 
 echo [2/2] Frontend 서버 + 통합 워커 시작 중...
 cd /d "%~dp0trend-video-frontend"
-start "%FRONTEND_TITLE%" cmd /k "npm run dev"
+REM BTS-3060: cmd /k 없이 직접 실행 (창 제목으로 식별)
+start "%FRONTEND_TITLE%" npm run dev
 cd /d "%~dp0"
 
 echo.

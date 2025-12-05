@@ -22,7 +22,7 @@ import {
 import { bugCreate } from './bug-bridge.js';
 
 // 워커 풀 관리
-const MAX_WORKERS = 4;
+const MAX_WORKERS = 10;
 const SPAWN_DELAY_MS = 5000;
 const WORKER_COMMANDS: { name: string; cmd: string; args: string[]; limit: number }[] = [
   { name: 'claude-1', cmd: 'claude', args: ['--dangerously-skip-permissions', 'auto-worker'], limit: 1 },

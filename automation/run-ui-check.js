@@ -45,6 +45,8 @@ async function run() {
   const worker = args.worker || process.env.BUG_WORKER || 'cli-worker';
   const timeoutMs = Number(args.timeout || process.env.UI_TEST_TIMEOUT || 15000);
   const recordEnabled = readRecordingFlag();
+  const maxRetries = Number(args.retries || process.env.UI_TEST_RETRIES || 3);
+  const retryDelayMs = Number(args['retry-delay'] || process.env.UI_TEST_RETRY_DELAY || 5000);
 
   const artifactsDir = path.join(__dirname, 'artifacts');
   ensureDir(artifactsDir);
@@ -90,7 +92,32 @@ async function run() {
       }
     });
 
-    const response = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    // Retry logic for connection errors
+    let response = null;
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        response = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err;
+        const isConnectionError = err.message.includes('ERR_CONNECTION_REFUSED') ||
+          err.message.includes('ERR_CONNECTION_RESET') ||
+          err.message.includes('ECONNREFUSED');
+
+        if (isConnectionError && attempt < maxRetries) {
+          writeLog(`[retry] Connection failed (attempt ${attempt}/${maxRetries}), retrying in ${retryDelayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
     if (!response) {
       throw new Error('No HTTP response received');
     }

@@ -19,8 +19,8 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const dbPath = path.join(dataDir, 'error-queue.db');
-console.error(`[MCP-Debugger] DB: ${dbPath}`);
+// BTS-3014: dbPath export하여 index.ts에서 시작 로그에 사용
+export const dbPath = path.join(dataDir, 'error-queue.db');
 const db: InstanceType<typeof Database> = new Database(dbPath);
 
 // WAL 모드 활성화
@@ -407,6 +407,24 @@ export function getActiveWorkers(): WorkerStatus[] {
 }
 
 // ==================== 통계 및 리포트 ====================
+
+// BTS-2991: 오래된 processing 에러를 pending으로 되돌림
+export function recoverStuckProcessing(timeoutMinutes: number = 30): number {
+  const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+
+  const stmt = db.prepare(`
+    UPDATE error_queue
+    SET status = 'pending', claimed_by = NULL, claimed_at = NULL, updated_at = ?
+    WHERE status IN ('processing', 'claimed') AND updated_at < ?
+  `);
+
+  const result = stmt.run(now, cutoff);
+  if (result.changes > 0) {
+    console.log(`[DB] ${result.changes}개의 멈춘 에러를 pending으로 되돌림 (${timeoutMinutes}분 초과)`);
+  }
+  return result.changes;
+}
 
 // 에러 통계
 export function getErrorStats(): {

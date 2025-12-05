@@ -2,7 +2,11 @@
 /**
  * 알림 워커
  * 10초마다 MySQL bugs 테이블을 확인하고 알림
+ * BTS-3023: PID 기반 worker ID 사용
  */
+
+// BTS-3060: 작업 관리자에서 프로세스 식별 가능하도록 설정
+process.title = 'NotifyWorker';
 
 const mysql = require('mysql2/promise');
 
@@ -12,6 +16,16 @@ const dbConfig = {
   password: process.env.DB_PASSWORD || 'trend2024',
   database: process.env.DB_NAME || 'trend_video'
 };
+
+// BTS-3023: PID 기반 worker ID
+const MY_PID = process.pid;
+const MY_WORKER_ID = `worker-${MY_PID}`;
+
+// BTS-3023: assigned_to가 자기 PID인지 확인
+function isMyBug(assignedTo) {
+  return assignedTo === MY_WORKER_ID;
+}
+
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -42,7 +56,7 @@ async function getBugs() {
 async function notificationWorker() {
   console.log('');
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║           🔔 버그 알림 워커 (10초마다 체크)                  ║');
+  console.log(`║  🔔 버그 알림 워커 (PID: ${MY_PID}, ID: ${MY_WORKER_ID})`.padEnd(63) + '║');
   console.log('║           DB: MySQL trend_video.bugs                         ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');

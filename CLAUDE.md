@@ -1,5 +1,30 @@
 # 개발 가이드 (Claude 메모리)
 
+## 🚨🚨🚨 3개 MD 파일 자동 동기화 - 최우선 규칙! 🚨🚨🚨
+
+**⛔ CLAUDE.md, CODEX.md, GEMINI.md는 항상 동일하게 유지해야 함! ⛔**
+
+**AI 에이전트(Claude/Codex/Gemini)는 이 파일들 중 하나를 수정할 때:**
+1. **사용자가 말하지 않아도** 자동으로 3개 파일 모두 동일하게 수정
+2. 수정 후 반드시 `cp CLAUDE.md CODEX.md && cp CLAUDE.md GEMINI.md` 실행
+3. 특화 섹션(`*-ONLY-*`)이 있으면 해당 부분만 보존
+
+**이 규칙은 사용자가 별도로 지시하지 않아도 항상 자동 적용!**
+
+---
+
+## 🚨🚨🚨 UTF-8 인코딩 - 절대 규칙! 🚨🚨🚨
+
+**모든 파일 입출력 및 셸 명령어 결과는 UTF-8로 처리해야 합니다.**
+
+- **파일 읽기/쓰기**: 항상 `encoding='utf-8'` 옵션을 사용하여 파일을 처리합니다.
+- **셸 명령어**: 명령어 실행 시 출력 인코딩이 깨지지 않도록 주의합니다. PowerShell의 경우 `chcp 65001` (UTF-8)을 먼저 실행하거나, `Out-File -Encoding utf8` 등을 사용하여 출력 인코딩을 명시적으로 지정합니다.
+- **표시 문제**: CLI에 문자가 깨져 보여도, 실제 파일이 손상되지 않았을 수 있습니다. 하지만 이는 사용자의 신뢰를 떨어뜨리므로, 출력 인코딩 문제를 최우선으로 해결해야 합니다.
+
+**이 규칙은 모든 작업에 예외 없이 적용됩니다.**
+
+---
+
 ## 🚨🚨🚨 CLAUDE.md 동기화 필수! 🚨🚨🚨
 
 **CLAUDE.md를 수정할 때 반드시 CODEX.md와 GEMINI.md에도 동일하게 복사해야 함!**
@@ -67,6 +92,7 @@ taskkill /PID 12345 /F      # 특정 PID만 종료
 - `개발가이드`
 - `개발`
 - `dev`
+- `roqkf` : 개발의오타
 
 1. **CLAUDE.md 읽기** (자동으로 됨)
 2. **BTS 워커 백그라운드 시작**:
@@ -86,13 +112,166 @@ taskkill /PID 12345 /F      # 특정 PID만 종료
 
 1. **세션 시작 시** → `bugs` 테이블에서 open 상태 버그/SPEC 확인
 2. **사용자 지시 없으면** → 가장 오래된 open 버그부터 순차 처리
-3. **처리 순서**: P1 > P2 > P3, 버그 > SPEC
+3. **처리 순서**: P0 > P1 > P2 > P3, 버그 > SPEC
 4. **항상 능동적으로 작업** - 사용자가 시키지 않아도 알아서 처리
 
-```sql
--- open 버그/SPEC 확인
-SELECT id, title, status FROM bugs WHERE status = 'open' ORDER BY created_at ASC;
+### ⛔⛔⛔ 버그 작업 시작 시 worker_pid 마킹 필수! ⛔⛔⛔
+
+**버그 작업 시작 전 반드시 `worker_pid`에 내 PID 저장!**
+- 여러 Claude CLI가 동시에 실행될 수 있음
+- 같은 버그를 중복 수정하면 충돌 발생!
+- **오직 `worker_pid` 숫자로만 판단 (assigned_to는 참고용)**
+- **BTS-3035**: spawning-pool이 등록한 PID는 shell wrapper PID일 수 있으므로, 작업 시작 시 내 PID로 업데이트 필수!
+
+### 🔑 worker_pid 기반 판단 규칙 (PID만 사용!)
+
+**⚠️ 핵심: `worker_pid` 컬럼(int)으로만 자기 버그인지 판단!**
+**⚠️ BTS-3035: in_progress 버그라도 해당 PID 프로세스가 죽었으면 claim 가능!**
+
+| 컬럼 | 타입 | 용도 |
+|-----|------|------|
+| `worker_pid` | int | **판단 기준** - 내 process.pid와 비교 |
+| `assigned_to` | varchar | 참고용 (Claude, Codex, Gemini 등) |
+
+```javascript
+// 내 PID 확인 (Node.js)
+const MY_PID = process.pid;  // 예: 12345
+
+// Python에서
+import os
+MY_PID = os.getpid()  # 예: 12345
 ```
+
+### 🔍 자기 버그인지 확인 (worker_pid로만!)
+
+```javascript
+const MY_PID = process.pid;  // 내 PID (숫자)
+const { execSync } = require('child_process');
+
+// PID가 살아있는지 확인 (Windows)
+function isProcessRunning(pid) {
+  try {
+    const result = execSync(`tasklist /FI "PID eq ${pid}" /NH`, { encoding: 'utf8' });
+    return result.includes(pid.toString());
+  } catch { return false; }
+}
+
+async function canWorkOnBug(bugId) {
+  const conn = await mysql.createConnection(dbConfig);
+  const [rows] = await conn.execute(
+    'SELECT status, worker_pid FROM bugs WHERE id = ?', [bugId]
+  );
+  await conn.end();
+
+  if (rows.length === 0) return false;
+  const bug = rows[0];
+
+  // Case 1: open 상태 → 내가 가져갈 수 있음
+  if (bug.status === 'open') return true;
+
+  // Case 2: in_progress이고 내 PID → 계속 작업
+  if (bug.status === 'in_progress' && bug.worker_pid === MY_PID) {
+    console.log(`내가 작업 중 (PID: ${MY_PID})`);
+    return true;
+  }
+
+  // Case 3: in_progress이고 다른 PID → 해당 PID가 죽었으면 claim 가능! (BTS-3035)
+  if (bug.status === 'in_progress' && bug.worker_pid !== MY_PID) {
+    if (!isProcessRunning(bug.worker_pid)) {
+      console.log(`PID ${bug.worker_pid}가 죽음 - 내가 claim 가능`);
+      return true;  // 죽은 워커의 버그 → claim 가능
+    }
+    console.log(`다른 워커 작업 중 (PID: ${bug.worker_pid}) - 건너뛰기`);
+    return false;
+  }
+
+  return false;
+}
+```
+
+### 📋 버그 작업 전체 플로우
+
+```sql
+-- 1. open 버그 조회 (worker_pid가 NULL인 것만!)
+SELECT id, title, status FROM bugs
+WHERE status = 'open' AND worker_pid IS NULL
+ORDER BY
+  CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
+  created_at ASC
+LIMIT 1;
+
+-- 2. 작업 시작 전 즉시 마킹 (내 PID 숫자로!)
+UPDATE bugs
+SET worker_pid = 12345, assigned_to = 'Claude', status = 'in_progress', updated_at = NOW()
+WHERE id = 3030 AND status = 'open';
+
+-- 3. 작업 완료 시 resolved 처리
+UPDATE bugs
+SET status = 'resolved', worker_pid = NULL, assigned_to = NULL,
+    resolution_note = '해결 내용', updated_at = NOW()
+WHERE id = 3030;
+```
+
+**핵심 규칙 (worker_pid로만 판단!):**
+- ✅ `worker_pid`가 NULL → 내가 가져갈 수 있음
+- ✅ `worker_pid` = 내 PID → 계속 작업
+- ❌ `worker_pid` ≠ 내 PID → **절대 손대지 마!**
+
+### 🔢 BTS 접두사 파싱 규칙 (BTS-3035 개선)
+
+**⚠️ SPEC- 접두사 사용 금지! 모든 버그/스펙은 BTS- 접두사 사용, type 컬럼으로 구분**
+
+**사용자가 `BTS-XXXX` 형식으로 입력하면:**
+
+1. **접두사 제거**: `BTS-` 제거 후 숫자만 추출
+2. **즉시 claim 시도**: `node bug.js claim {숫자}` 실행
+   - 성공 시 → 내 PID로 worker_pid 마킹됨, 작업 시작
+   - 실패 시(다른 PID가 이미 claim) → **작업 금지, 다른 버그로 이동**
+3. **claim 성공 후 작업 진행**
+
+```bash
+# BTS-3030 처리 예시
+cd C:/Users/oldmoon/workspace
+node bug.js claim 3030   # 먼저 claim! (내 PID로 마킹)
+# ... 작업 진행 ...
+node bug.js resolve 3030 "수정 내용"
+```
+
+**⚠️ 핵심: 상태 조회보다 claim을 먼저! (경쟁 조건 방지)**
+
+### ⛔⛔⛔ bugs 테이블은 MySQL에만 존재! SQLite 아님! ⛔⛔⛔
+
+**bugs 테이블 조회 시 반드시 MySQL 사용! → `bug.js` CLI 활용**
+
+### 🛠️ bug.js CLI 사용법 (범용 스크립트)
+
+```bash
+# 버그 목록 조회
+node bug.js list
+
+# 버그 상세 조회
+node bug.js get 3025
+
+# 버그 등록 (priority: P0~P3, 기본값 P2)
+node bug.js add "버그 제목" "버그 요약" P1
+
+# SPEC 등록
+node bug.js spec "스펙 제목" "스펙 요약" P2
+
+# 버그 클레임 (작업 시작)
+node bug.js claim 3025
+
+# 버그 해결
+node bug.js resolve 3025 "해결 내용"
+
+# 버그 재오픈
+node bug.js reopen 3025
+```
+
+**⚠️ 주의:**
+- `node -e`로 직접 SQL 실행 시 Windows 경로(`\`)가 escape 에러 발생
+- 항상 `bug.js` CLI 사용 권장
+- SQLite (better-sqlite3)에는 bugs 테이블 없음!
 
 ## 🧪🧪🧪 버그 완료 = 통합테스트 필수! 🧪🧪🧪
 
@@ -143,14 +322,48 @@ npm test -- --testPathPattern="bug-BTS-XXXXXXX"
 ### 🤖 모델 변경 (Model Change) - 자동 수정
 모델 변경과 관련된 작업은 사용자에게 묻지 않고 자동으로 수정 및 적용합니다.
 
-```sql
--- 버그 등록 예시
-INSERT INTO bugs (id, title, summary, status, metadata, created_at, updated_at)
-VALUES ('BTS-0000XXX', '버그 제목', '버그 요약', 'open', '{}', NOW(), NOW());
-
--- 해결 후
-UPDATE bugs SET status = 'resolved', updated_at = NOW() WHERE id = 'BTS-0000XXX';
+### bugs 테이블 스키마 (MySQL)
 ```
+bugs 테이블 컬럼:
+├── id (int, PK, AUTO_INCREMENT)
+├── type (enum: 'bug', 'spec') - 기본값 'bug'
+├── priority (enum: 'P0', 'P1', 'P2', 'P3') - 기본값 'P2'
+├── title (text, NOT NULL)
+├── summary (text)
+├── status (varchar(32), NOT NULL) - 'open', 'in_progress', 'resolved'
+├── log_path (text)
+├── screenshot_path (text)
+├── video_path (text)
+├── trace_path (text)
+├── created_at (datetime, NOT NULL)
+├── updated_at (datetime, NOT NULL)
+├── assigned_to (varchar(64)) - 작업 중인 워커 ID
+├── metadata (json)
+├── resolution_note (text)
+└── worker_pid (int)
+```
+
+### 버그/SPEC 등록 및 관리
+
+**항상 `bug.js` CLI 사용! (node -e 사용 금지)**
+
+```bash
+# 버그 등록
+node bug.js add "버그 제목" "버그 요약 (Windows 경로도 OK)" P1
+
+# SPEC 등록
+node bug.js spec "스펙 제목" "스펙 요약" P2
+
+# 버그 해결
+node bug.js resolve 3027 "수정 내용"
+
+# 버그 재오픈
+node bug.js reopen 3027
+```
+
+**⚠️ `node -e` 사용 금지!**
+- Windows 경로(`\`)가 escape sequence로 해석되어 에러 발생
+- 예: `C:\Users` → `\U`가 유니코드로 해석됨
 
 ## 🐛 @디버깅해 명령어
 
@@ -401,4 +614,10 @@ const isValidDeepLink = shortUrl &&
 
 const pageKey = urlObj.searchParams.get('pageKey');
 if (pageKey) return pageKey; // 이게 첫 번째로 체크되어야 함!
-```
+```---
+
+## 2025-12-05 �۾� �α�
+- BTS-0003059 ����: ����� �̹��� ���⡱�� product_thumbnail/scene_00_hook ���� ��ü ǥ��, ũ�Ѹ� ��� ������ ����ϡ������ ���� �� ���� ��� �̹����� ����. ���� in_progress, P2.
+- BTS-0003060 ����: cmd /k�� �ߴ� Node ���μ����� �۾� �����ڿ��� ��Windows ���� ó���⡱�� ǥ�õǾ� �ĺ� �����. ����/��� �ѱ� ����, ���� open, P2.
+- ���ڵ� ���� ����: `trend-video-frontend/src/lib/mysql.ts`�� Ŀ�ؼǸ��� `SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci` ������ ����� UTF-8 ����.
+- ��Ÿ: `.gitignore`�� ũ�� ������ ĳ�� ���� ��ο� `automation/artifacts/` �߰�.

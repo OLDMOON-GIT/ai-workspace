@@ -1,11 +1,12 @@
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 type BugRecord = {
   id: string;
   title: string;
   summary?: string;
   status: string;
+  type?: string;
   log_path?: string | null;
   screenshot_path?: string | null;
   video_path?: string | null;
@@ -27,7 +28,9 @@ function resolveBugDbPath() {
 async function loadBugDb() {
   const bugDbPath = process.env.BUG_DB_PATH || resolveBugDbPath();
   try {
-    const mod = await import(bugDbPath);
+    // BTS-2996: Windows 경로를 file:// URL로 변환하여 ESM 로더 호환
+    const importPath = pathToFileURL(bugDbPath).href;
+    const mod = await import(importPath);
     return mod;
   } catch (error: any) {
     throw new Error(`bug-db.js 로드 실패 (${bugDbPath}): ${error.message}`);

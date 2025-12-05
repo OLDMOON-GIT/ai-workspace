@@ -6,6 +6,9 @@
  * DB는 ~/.mcp-debugger/error-queue.db에 저장되어 어느 워크스페이스에서든 사용 가능
  */
 
+// BTS-3060: 작업 관리자에서 프로세스 식별 가능하도록 설정
+process.title = 'MCPDebugger';
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -31,7 +34,8 @@ import {
   addLogSource,
   getLogSources,
   removeLogSource,
-  ErrorItem
+  ErrorItem,
+  dbPath  // BTS-3014: 시작 로그에 DB 경로 표시
 } from './db.js';
 import { bugClaim, bugList, bugUpdate, formatBug as formatBugRecord } from './bug-bridge.js';
 
@@ -1004,7 +1008,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("MCP Debugger 서버가 시작되었습니다.");
+
+  // BTS-3014: 시작 로그 개선 - 더 자세한 정보 표시
+  const stats = getErrorStats();
+  console.error(`
+╔══════════════════════════════════════════════════════════════╗
+║  MCP Debugger 서버 시작됨                                     ║
+╠══════════════════════════════════════════════════════════════╣
+║  DB: ${dbPath.padEnd(52)}║
+║  에러 큐: pending=${String(stats.pending).padEnd(3)} processing=${String(stats.processing).padEnd(3)} resolved=${String(stats.resolved).padEnd(3)}   ║
+║                                                              ║
+║  사용 가능한 도구:                                            ║
+║   - bug.list/claim/update: MySQL bugs 테이블 관리            ║
+║   - add_error/get_pending_errors: 에러 큐 관리               ║
+║   - @디버깅: 버그 자동 할당 + 해결 안내                       ║
+╚══════════════════════════════════════════════════════════════╝
+  `.trim());
 }
 
 main().catch(console.error);

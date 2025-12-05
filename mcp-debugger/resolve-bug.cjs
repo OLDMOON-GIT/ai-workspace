@@ -1,10 +1,21 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
- * 버그 해결 스크립트
+ * Bug resolved marker
  * Usage: node resolve-bug.cjs <bug_id> <resolution_note>
  */
 
 const mysql = require('mysql2/promise');
+
+function parseBugId(input) {
+  if (!input) return null;
+  const cleaned = String(input).trim().replace(/^BTS-/i, '');
+  const num = parseInt(cleaned, 10);
+  return Number.isNaN(num) ? null : num;
+}
+
+function formatBugId(num) {
+  return `BTS-${String(num).padStart(7, '0')}`;
+}
 
 const dbConfig = {
   host: 'localhost',
@@ -13,23 +24,31 @@ const dbConfig = {
   database: 'trend_video'
 };
 
-async function resolveBug(bugId, note) {
+async function resolveBug(rawBugId, note) {
+  const numericBugId = parseBugId(rawBugId);
+  if (!numericBugId) {
+    console.error('Invalid bug_id format. Use BTS-XXXX or a numeric id.');
+    process.exit(1);
+  }
+
   let connection;
   try {
     connection = await mysql.createConnection(dbConfig);
 
-    await connection.execute(`
-      UPDATE bugs
-      SET status = 'resolved',
-          resolution_note = ?,
-          updated_at = NOW()
-      WHERE id = ?
-    `, [note, bugId]);
+    await connection.execute(
+      `
+        UPDATE bugs
+        SET status = 'resolved',
+            resolution_note = ?,
+            updated_at = NOW()
+        WHERE id = ?
+      `,
+      [note, numericBugId]
+    );
 
-    console.log(`✅ ${bugId} resolved: ${note}`);
-
+    console.log(`??${formatBugId(numericBugId)} resolved: ${note}`);
   } catch (error) {
-    console.error('❌ 실패:', error.message);
+    console.error('???낅뜲?댄듃 ?ㅽ뙣:', error.message);
     process.exit(1);
   } finally {
     if (connection) {

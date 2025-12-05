@@ -5,6 +5,7 @@ const dbConfig = {
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || 'trend2024',
   database: process.env.DB_NAME || 'trend_video',
+  charset: 'utf8mb4',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -16,6 +17,20 @@ function now() {
   return new Date().toISOString();
 }
 
+// BTS-3023: PID 기반 worker ID 생성
+function getWorkerIdByPid(pid) {
+  const usePid = pid || process.pid;
+  return `worker-${usePid}`;
+}
+
+// BTS-3023: assigned_to가 자기 PID인지 확인
+function isMyWorker(assignedTo, myPid) {
+  if (!assignedTo) return false;
+  const pid = myPid || process.pid;
+  return assignedTo === `worker-${pid}`;
+}
+
+
 function parseMeta(raw) {
   if (!raw) return {};
   if (typeof raw === 'object') return { ...raw };
@@ -26,49 +41,28 @@ function parseMeta(raw) {
   }
 }
 
-async function init() {
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS bugs (
-      id VARCHAR(64) PRIMARY KEY,
-      title TEXT NOT NULL,
-      summary TEXT,
-      status VARCHAR(32) NOT NULL,
-      log_path TEXT,
-      screenshot_path TEXT,
-      video_path TEXT,
-      trace_path TEXT,
-      resolution_note TEXT,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      assigned_to VARCHAR(64),
-      metadata JSON
-    )
-  `);
+// 숫자 ID를 BTS- 형식 문자열로 변환
+function formatBugId(numId) {
+  return `BTS-${String(numId).padStart(7, '0')}`;
+}
 
-  // bug_sequence 테이블 생성
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS bug_sequence (
-      id INT PRIMARY KEY DEFAULT 1,
-      next_number INT NOT NULL DEFAULT 1
-    )
-  `);
-
-  // 초기 시퀀스 값 설정
-  await pool.execute(`INSERT INTO bug_sequence (id, next_number) VALUES (1, 1) ON DUPLICATE KEY UPDATE id=id`);
-
-  try {
-    await pool.execute(`CREATE INDEX idx_bugs_status_created ON bugs(status, created_at)`);
-  } catch (error) {
-    // ER_DUP_KEYNAME (1061) means index already exists; ignore for idempotency
-    if (error && error.errno !== 1061) {
-      throw error;
-    }
+// BTS- 접두사만 허용 (SPEC- 접두사 사용 금지, type 컬럼으로 bug/spec 구분)
+function parseBugId(id) {
+  if (typeof id === 'number') return id;
+  if (typeof id === 'string') {
+    const cleaned = id.replace(/^BTS-/i, '').trim();
+    const parsed = parseInt(cleaned, 10);
+    if (!Number.isNaN(parsed)) return parsed;
   }
+  const parsed = parseInt(id, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+async function init() {
   try {
-    await pool.execute(`ALTER TABLE bugs ADD COLUMN resolution_note TEXT`);
+    await pool.execute('CREATE INDEX idx_bugs_status_created ON bugs(status, created_at)');
   } catch (error) {
-    // ER_DUP_FIELDNAME (1060) means column already exists
-    if (error && error.errno !== 1060) {
+    if (error && error.errno !== 1061) {
       throw error;
     }
   }
@@ -93,6 +87,8 @@ async function withTx(fn) {
 
 async function createBug({
   id,
+  type = 'bug',
+  priority = 'P2',
   title,
   summary,
   logPath,
@@ -104,49 +100,97 @@ async function createBug({
 }) {
   await ready;
 
-  let bugId = id;
-  if (!bugId) {
-    // bug_sequence에서 다음 번호 가져오기
-    await pool.execute(`UPDATE bug_sequence SET next_number = next_number + 1 WHERE id = 1`);
-    const [rows] = await pool.execute(`SELECT next_number FROM bug_sequence WHERE id = 1`);
-    const nextNum = rows[0].next_number;
-    bugId = `BTS-${String(nextNum).padStart(7, '0')}`;
-  }
+  let numericId = id ? parseBugId(id) : null;
 
-  await pool.execute(
-    `
-      INSERT INTO bugs (
-        id, title, summary, status, log_path, screenshot_path, video_path, trace_path,
-        resolution_note, created_at, updated_at, assigned_to, metadata
-      ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-    `,
-    [
-      bugId,
-      title,
-      summary,
-      logPath || null,
-      screenshotPath || null,
-      videoPath || null,
-      tracePath || null,
-      null,
-      worker || null,
-      JSON.stringify(metadata || {})
-    ]
-  );
-  return bugId;
+  try {
+    if (numericId) {
+      await pool.execute(
+        `
+          INSERT INTO bugs (
+            id, type, priority, title, summary, status, log_path, screenshot_path, video_path, trace_path,
+            resolution_note, created_at, updated_at, assigned_to, metadata
+          ) VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+        `,
+        [
+          numericId,
+          type,
+          priority,
+          title,
+          summary,
+          logPath || null,
+          screenshotPath || null,
+          videoPath || null,
+          tracePath || null,
+          null,
+          worker || null,
+          JSON.stringify(metadata || {})
+        ]
+      );
+    } else {
+      const [result] = await pool.execute(
+        `
+          INSERT INTO bugs (
+            type, priority, title, summary, status, log_path, screenshot_path, video_path, trace_path,
+            resolution_note, created_at, updated_at, assigned_to, metadata
+          ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+        `,
+        [
+          type,
+          priority,
+          title,
+          summary,
+          logPath || null,
+          screenshotPath || null,
+          videoPath || null,
+          tracePath || null,
+          null,
+          worker || null,
+          JSON.stringify(metadata || {})
+        ]
+      );
+      numericId = result.insertId;
+    }
+  } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') {
+      const queryId = numericId ?? parseBugId(id);
+      const [rows] = await pool.execute(
+        'SELECT id, title, status, created_at, updated_at FROM bugs WHERE id = ? LIMIT 1',
+        [queryId]
+      );
+      const existing = rows && rows[0];
+      if (existing) {
+        const createdAt = existing.created_at
+          ? new Date(existing.created_at).toISOString().replace('T', ' ').replace('Z', '')
+          : '';
+        const updatedAt = existing.updated_at
+          ? new Date(existing.updated_at).toISOString().replace('T', ' ').replace('Z', '')
+          : '';
+        throw new Error(
+          `${formatBugId(existing.id)}? ?대? ?깅줉??踰꾧렇?낅땲??\n` +
+          `  - 제목: ${existing.title || ''}\n` +
+          `  - 상태: ${existing.status || ''}\n` +
+          `  - 생성시: ${createdAt}\n` +
+          `  - 수정시: ${updatedAt}`
+        );
+      }
+    }
+    throw error;
+  }
+  return formatBugId(numericId);
 }
 
-async function claimBug(workerId) {
+async function claimBug(workerId, type) {
   await ready;
   return withTx(async (conn) => {
     const [rows] = await conn.execute(
       `
         SELECT * FROM bugs
-        WHERE status = 'open'
+        WHERE status = 'open' AND (? IS NULL OR type = ?)
         ORDER BY created_at ASC
         LIMIT 1
-        FOR UPDATE
-      `
+        FOR UPDATE SKIP LOCKED
+      `,
+      [type || null, type || null]
     );
     const bug = rows[0];
     if (!bug) return null;
@@ -165,14 +209,17 @@ async function claimBug(workerId) {
     );
     if (result.affectedRows === 0) return null;
 
-    return { ...bug, status: 'in_progress', assigned_to: workerId, metadata: meta };
+    return { ...bug, id: formatBugId(bug.id), status: 'in_progress', assigned_to: workerId, metadata: meta };
   });
 }
 
 async function updateBugStatus(id, workerId, status, note) {
   await ready;
+  const numericId = parseBugId(id);
+  if (!numericId) return { ok: false, reason: 'invalid_id' };
+
   return withTx(async (conn) => {
-    const [rows] = await conn.execute(`SELECT * FROM bugs WHERE id = ? FOR UPDATE`, [id]);
+    const [rows] = await conn.execute('SELECT * FROM bugs WHERE id = ? FOR UPDATE', [numericId]);
     const bug = rows[0];
     if (!bug) return { ok: false, reason: 'not_found' };
 
@@ -198,40 +245,51 @@ async function updateBugStatus(id, workerId, status, note) {
         SET status = ?, assigned_to = ?, metadata = ?, resolution_note = ?, updated_at = NOW()
         WHERE id = ?
       `,
-      [status, nextAssigned, JSON.stringify(meta), nextResolution, id]
+      [status, nextAssigned, JSON.stringify(meta), nextResolution, numericId]
     );
 
     return {
       ok: res.affectedRows > 0,
-      bug: { ...bug, status, assigned_to: nextAssigned, metadata: meta, resolution_note: nextResolution }
+      bug: { ...bug, id: formatBugId(bug.id), status, assigned_to: nextAssigned, metadata: meta, resolution_note: nextResolution }
     };
   });
 }
 
-async function listBugs(status = 'open', limit = 20) {
+async function listBugs(status = 'open', limit = 20, type = null) {
   await ready;
-  const whereClause = status === 'all' ? '1=1' : 'status = ?';
-  const params = status === 'all' ? [] : [status];
+  const whereClauses = [];
+  const params = [];
+
+  if (status !== 'all') {
+    whereClauses.push('status = ?');
+    params.push(status);
+  } else {
+    whereClauses.push('1=1');
+  }
+
+  if (type && type !== 'all') {
+    whereClauses.push('type = ?');
+    params.push(type);
+  }
+
+  const whereClause = whereClauses.join(' AND ');
   const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 1000));
   const [rows] = await pool.execute(
-    `
-      SELECT *
-      FROM bugs
-      WHERE ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT ${safeLimit}
-    `,
+    `SELECT * FROM bugs WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${safeLimit}`,
     params
   );
-  return rows;
+
+  return rows.map(bug => ({ ...bug, id: formatBugId(bug.id), metadata: parseMeta(bug.metadata) }));
 }
 
 async function getBug(id) {
   await ready;
-  const [rows] = await pool.execute(`SELECT * FROM bugs WHERE id = ?`, [id]);
+  const numericId = parseBugId(id);
+  if (!numericId) return null;
+  const [rows] = await pool.execute('SELECT * FROM bugs WHERE id = ?', [numericId]);
   const bug = rows[0];
   if (!bug) return null;
-  return { ...bug, metadata: parseMeta(bug.metadata) };
+  return { ...bug, id: formatBugId(bug.id), metadata: parseMeta(bug.metadata) };
 }
 
 async function closePool() {
@@ -246,12 +304,15 @@ init().catch((e) => {
   console.error('Failed to init bug DB:', e.message);
 });
 
-module.exports = {
-  createBug,
+module.exports = {createBug,
   claimBug,
   updateBugStatus,
   listBugs,
   getBug,
+  formatBugId,
+  parseBugId,
   dbConfig,
-  closePool
+  closePool,
+  getWorkerIdByPid,
+  isMyWorker
 };

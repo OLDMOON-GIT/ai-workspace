@@ -4,17 +4,26 @@ echo   Night Auto Runner - Starting...
 echo ========================================
 echo.
 
+REM BTS-3060: cmd /c 없이 직접 실행 (창 제목으로 식별)
 echo [1/4] Starting Log Monitor (Debugger)...
-start "MCP-Debugger" cmd /c "cd /d C:\Users\oldmoon\workspace\mcp-debugger && npm run monitor"
+cd /d C:Usersoldmoonworkspacemcp-debugger
+start "MCP-Debugger" npm run monitor
+cd /d C:Usersoldmoonworkspace
 
 echo [2/4] Starting File Watcher (Tester)...
-start "MCP-Tester" cmd /c "cd /d C:\Users\oldmoon\workspace\mcp-auto-tester && npm run watch"
+cd /d C:Usersoldmoonworkspacemcp-auto-tester
+start "MCP-Tester" npm run watch
+cd /d C:Usersoldmoonworkspace
 
 echo [3/4] Starting Auto Fixer (Claude CLI)...
-start "MCP-AutoFix" cmd /c "cd /d C:\Users\oldmoon\workspace\mcp-debugger && npm run auto-fix"
+cd /d C:Usersoldmoonworkspacemcp-debugger
+start "MCP-AutoFix" npm run auto-fix
+cd /d C:Usersoldmoonworkspace
 
 echo [4/4] Starting Test Generator (Claude CLI)...
-start "MCP-TestGen" cmd /c "cd /d C:\Users\oldmoon\workspace\mcp-debugger && npm run gen-test"
+cd /d C:Usersoldmoonworkspacemcp-debugger
+start "MCP-TestGen" npm run gen-test
+cd /d C:Usersoldmoonworkspace
 
 echo.
 echo ========================================

@@ -66,3 +66,6 @@ __pycache__/
 *.appcache
 chrome_data/
 LargeClipboardApp/
+abc-choice/data/chromium-profile/Default/Cache/Cache_Data/
+abc-choice/data/chromium-profile-*/Default/Cache/Cache_Data/
+automation/artifacts/
