@@ -69,3 +69,5 @@ LargeClipboardApp/
 abc-choice/data/chromium-profile/Default/Cache/Cache_Data/
 abc-choice/data/chromium-profile-*/Default/Cache/Cache_Data/
 automation/artifacts/
+automation/nul
+mcp-debugger/nul
