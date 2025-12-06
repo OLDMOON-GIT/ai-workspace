@@ -210,11 +210,12 @@ echo [2] Restart MCP Debugger
 echo [3] Restart Spawning Pool
 echo [4] Restart Monitoring (Log+Build+UI)
 echo [5] Run UI Test (once)
+echo [6] DB Sync (Local ^<-^> Remote)
 echo [8] Stop ALL
 echo [9] Exit
 echo [S] Settings
 echo ============================================================
-set /p choice="Select (0-5, 8-9, S, Enter=0): "
+set /p choice="Select (0-6, 8-9, S, Enter=0): "
 
 if "%choice%"=="" set choice=0
 
@@ -224,6 +225,7 @@ if "%choice%"=="2" goto RESTART_MCP
 if "%choice%"=="3" goto RESTART_SPAWNING_POOL
 if "%choice%"=="4" goto RESTART_MONITORING
 if "%choice%"=="5" goto RUN_TEST
+if "%choice%"=="6" goto DB_SYNC
 if "%choice%"=="8" goto STOP_ALL
 if "%choice%"=="9" goto END
 if /i "%choice%"=="S" goto MENU_SETTINGS
@@ -290,6 +292,10 @@ taskkill /FI "WINDOWTITLE eq Build Monitor*" /F >nul 2>&1
 timeout /t 1 /nobreak >nul
 start "Monitoring" "%~dp0automation\services-combined.bat"
 echo Monitoring Services restarted (Log + Build + UI Test).
+goto MENU
+
+:DB_SYNC
+call "%~dp0automation\db-sync.bat"
 goto MENU
 
 :RUN_TEST
