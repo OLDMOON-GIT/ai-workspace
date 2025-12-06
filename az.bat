@@ -243,15 +243,18 @@ goto MENU
 echo.
 echo Restarting Frontend...
 echo ============================================================
-REM 창 제목으로 종료
+REM 특정 Node.js 프로세스 종료 (npm run dev, dev:https, next-server.js, server.js)
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {$_.CommandLine -like '*npm run dev*' -or $_.CommandLine -like '*next-server.js*' -or ($_.CommandLine -like '*node*' -and $_.CommandLine -like '*server.js*')} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM 포트 사용 중인 프로세스 종료 (HTTP + HTTPS)
+powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTP_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTPS_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM 창 제목으로 종료 (레거시/보완용)
 taskkill /FI "WINDOWTITLE eq Trend Video Frontend*" /F >nul 2>&1
-powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTP_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 cd /d "%~dp0trend-video-frontend"
 REM BTS-3060: cmd /k 없이 직접 실행 (창 제목으로 식별)
-REM 환경변수 PORT 설정하여 Next.js에 전달
-set PORT=%TREND_HTTP_PORT%
-start "Trend Video Frontend" cmd /c "npm run dev -- -p %TREND_HTTP_PORT%"
+REM server.js가 TREND_HTTP_PORT, TREND_HTTPS_PORT 환경변수 사용
+start "Trend Video Frontend" cmd /c "npm run dev:https"
 cd /d "%~dp0"
 echo Frontend restarted.
 goto MENU
@@ -260,6 +263,9 @@ goto MENU
 echo.
 echo Restarting MCP Debugger...
 echo ============================================================
+REM 특정 Node.js 프로세스 종료 (npm run start, notification-worker.cjs, auto-worker.cjs)
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {$_.CommandLine -like '*npm run start*' -or $_.CommandLine -like '*notification-worker.cjs*' -or $_.CommandLine -like '*auto-worker.cjs*'} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM 창 제목으로 종료 (레거시/보완용)
 taskkill /FI "WINDOWTITLE eq MCP Debugger*" /F >nul 2>&1
 timeout /t 1 /nobreak >nul
 cd /d "%~dp0mcp-debugger"
@@ -273,6 +279,9 @@ goto MENU
 echo.
 echo Restarting Spawning Pool...
 echo ============================================================
+REM 특정 Python 프로세스 종료 (spawning-pool.py)
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {$_.CommandLine -like '*spawning-pool.py*'} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM 창 제목으로 종료 (레거시/보완용)
 taskkill /FI "WINDOWTITLE eq Spawning Pool*" /F >nul 2>&1
 timeout /t 1 /nobreak >nul
 cd /d "%~dp0mcp-debugger"
@@ -285,6 +294,9 @@ goto MENU
 echo.
 echo Restarting Monitoring Services...
 echo ============================================================
+REM 특정 프로세스 종료 (services-combined.bat, log-monitor.js, build-monitor.js, ui-test-loop.js)
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {$_.CommandLine -like '*services-combined.bat*' -or $_.CommandLine -like '*log-monitor.js*' -or $_.CommandLine -like '*build-monitor.js*' -or $_.CommandLine -like '*ui-test-loop.bat*' -or $_.CommandLine -like '*ui-test-loop.js*'} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM 창 제목으로 종료 (레거시/보완용)
 taskkill /FI "WINDOWTITLE eq Monitoring*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Log Monitor*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq UI Test Loop*" /F >nul 2>&1
@@ -398,20 +410,42 @@ pause
 goto MENU
 
 :STOP_ALL_QUIET
-REM 개별 창 종료
+REM ============================================================
+REM 모든 서버 관련 프로세스 강제 종료 (조용히)
+REM ============================================================
+echo [STOP_ALL_QUIET] Terminating existing processes...
+
+REM 1. 포트 사용 중인 프로세스 종료 (Frontend HTTP + HTTPS)
+echo   - Killing process on port %TREND_HTTP_PORT% and %TREND_HTTPS_PORT%...
+powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTP_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTPS_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
+REM 2. 특정 커맨드 라인을 포함하는 Node.js/Python 프로세스 종료
+echo   - Killing Node.js/Python processes by command line...
+REM Frontend (npm run dev, dev:https, next-server.js, server.js)
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {($_.CommandLine -like '*npm run dev*' -or $_.CommandLine -like '*next-server.js*' -or ($_.CommandLine -like '*node*' -and $_.CommandLine -like '*server.js*')) -and $_.CommandLine -notlike '*--force*'} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM MCP Debugger (npm run start) - auto-worker.cjs, notification-worker.cjs 포함
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {$_.CommandLine -like '*npm run start*' -or $_.CommandLine -like '*notification-worker.cjs*' -or $_.CommandLine -like '*auto-worker.cjs*' -and $_.CommandLine -notlike '*--force*'} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM Spawning Pool (python spawning-pool.py)
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {$_.CommandLine -like '*spawning-pool.py*' -and $_.CommandLine -notlike '*--force*'} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+REM Monitoring (services-combined.bat, log-monitor.js, build-monitor.js, ui-test-loop.js)
+powershell -Command "Get-WmiObject Win32_Process | Where-Object {$_.CommandLine -like '*services-combined.bat*' -or $_.CommandLine -like '*log-monitor.js*' -or $_.CommandLine -like '*build-monitor.js*' -or $_.CommandLine -like '*ui-test-loop.bat*' -or $_.CommandLine -like '*ui-test-loop.js*' -and $_.CommandLine -notlike '*--force*'} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
+REM 3. 기존의 창 제목 기반 종료 (혹시 모를 잔여 프로세스 정리)
+echo   - Killing processes by window title (legacy fallback)...
 taskkill /FI "WINDOWTITLE eq Trend Video Frontend*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq MCP Debugger*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Spawning Pool*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Monitoring*" /F >nul 2>&1
-REM 레거시 창 (이전 버전 호환)
 taskkill /FI "WINDOWTITLE eq Frontend Watchdog*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Log Monitor*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq UI Test Loop*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Build Monitor*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Services*" /F >nul 2>&1
-REM 포트 정리
-powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTP_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
-timeout /t 2 /nobreak >nul
+
+REM 충분한 종료 대기 시간
+timeout /t 3 /nobreak >nul
+echo [STOP_ALL_QUIET] Done.
 goto :eof
 
 :START_SERVER
@@ -430,8 +464,9 @@ set ERROR_COUNT=0
 set ERROR_LIST=
 
 REM --- Step 1: 기존 프로세스 종료 ---
-echo [1/5] Kill port %TREND_HTTP_PORT%...
+echo [1/5] Kill port %TREND_HTTP_PORT% and %TREND_HTTPS_PORT%...
 powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTP_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTPS_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 
 REM --- Step 2: Next.js 빌드 캐시 삭제 ---
@@ -443,10 +478,11 @@ if exist "%~dp0trend-video-frontend\.next" (
     echo        %YELLOW%[SKIP]%RESET% .next not found
 )
 
-REM --- Step 3: Frontend 서버 시작 ---
-echo [3/5] Start Frontend (http://localhost:%TREND_HTTP_PORT%)...
+REM --- Step 3: Frontend 서버 시작 (HTTP + HTTPS) ---
+echo [3/5] Start Frontend (http://localhost:%TREND_HTTP_PORT%, https://localhost:%TREND_HTTPS_PORT%)...
 cd /d "%~dp0trend-video-frontend"
-start "Trend Video Frontend" cmd /c "npm run dev -- -p %TREND_HTTP_PORT%"
+REM server.js가 TREND_HTTP_PORT, TREND_HTTPS_PORT 환경변수 사용
+start "Trend Video Frontend" cmd /c "npm run dev:https"
 cd /d "%~dp0"
 
 REM --- Step 4: MCP Debugger 시작 ---
@@ -477,14 +513,24 @@ echo ============================================================
 echo   Health Check
 echo ============================================================
 
-REM Frontend 체크
+REM Frontend HTTP 체크
 powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:%TREND_HTTP_PORT%' -TimeoutSec 5 -UseBasicParsing; exit 0 } catch { exit 1 }" >nul 2>&1
 if !errorlevel! EQU 0 (
-    echo   %GREEN%[OK]%RESET%   Frontend         http://localhost:%TREND_HTTP_PORT%
+    echo   %GREEN%[OK]%RESET%   Frontend HTTP    http://localhost:%TREND_HTTP_PORT%
 ) else (
-    echo   %RED%[FAIL]%RESET% Frontend         http://localhost:%TREND_HTTP_PORT%
+    echo   %RED%[FAIL]%RESET% Frontend HTTP    http://localhost:%TREND_HTTP_PORT%
     set /a ERROR_COUNT+=1
-    set "ERROR_LIST=!ERROR_LIST! Frontend"
+    set "ERROR_LIST=!ERROR_LIST! Frontend-HTTP"
+)
+
+REM Frontend HTTPS 체크 (SSL 인증서 있는 경우)
+if exist "%~dp0trend-video-frontend\ssl\server.crt" (
+    powershell -Command "try { [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; $r = Invoke-WebRequest -Uri 'https://localhost:%TREND_HTTPS_PORT%' -TimeoutSec 5 -UseBasicParsing; exit 0 } catch { exit 1 }" >nul 2>&1
+    if !errorlevel! EQU 0 (
+        echo   %GREEN%[OK]%RESET%   Frontend HTTPS   https://localhost:%TREND_HTTPS_PORT%
+    ) else (
+        echo   %YELLOW%[WARN]%RESET% Frontend HTTPS   https://localhost:%TREND_HTTPS_PORT% (SSL cert issue?)
+    )
 )
 
 REM MCP Debugger 체크 (포트 3010)
