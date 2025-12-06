@@ -28,10 +28,10 @@ REM
 REM   3. Spawning Pool (python spawning-pool.py)
 REM      - 버그 처리 워커 스폰 (별도 창 필수!)
 REM
-REM   4. Monitoring (services-combined.bat) - 3개 서비스 통합
+REM   4. Monitoring (services-combined.bat) - 2개 서비스 통합
 REM      - Log Monitor: 로그 실시간 감시, 에러 자동 등록
 REM      - Build Monitor: 빌드 에러 감지 (30분 간격)
-REM      - UI Test Loop: Playwright 스모크 테스트 (10분 간격)
+REM      - UI Test: 메뉴 [5]에서 수동 실행
 REM
 REM 헬스체크:
 REM   - 시작 후 15초 대기 → 각 서비스 상태 확인
@@ -208,8 +208,8 @@ echo [0] Restart ALL
 echo [1] Restart Frontend
 echo [2] Restart MCP Debugger
 echo [3] Restart Spawning Pool
-echo [4] Restart Monitoring (Log+Build+UI)
-echo [5] Run UI Test (once)
+echo [4] Restart Monitoring (Log+Build)
+echo [5] Run UI Test (수동)
 echo [6] DB Sync (Local ^<-^> Remote)
 echo [8] Stop ALL
 echo [9] Exit
@@ -291,7 +291,7 @@ taskkill /FI "WINDOWTITLE eq UI Test Loop*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Build Monitor*" /F >nul 2>&1
 timeout /t 1 /nobreak >nul
 start "Monitoring" "%~dp0automation\services-combined.bat"
-echo Monitoring Services restarted (Log + Build + UI Test).
+echo Monitoring Services restarted (Log + Build).
 goto MENU
 
 :DB_SYNC
@@ -516,9 +516,9 @@ if !errorlevel! EQU 0 (
 REM Monitoring 창 체크
 tasklist /FI "WINDOWTITLE eq Monitoring*" 2>nul | find "cmd.exe" >nul 2>&1
 if !errorlevel! EQU 0 (
-    echo   %GREEN%[OK]%RESET%   Monitoring       Log + Build + UI Test
+    echo   %GREEN%[OK]%RESET%   Monitoring       Log + Build
 ) else (
-    echo   %RED%[FAIL]%RESET% Monitoring       Log + Build + UI Test
+    echo   %RED%[FAIL]%RESET% Monitoring       Log + Build
     set /a ERROR_COUNT+=1
     set "ERROR_LIST=!ERROR_LIST! Monitoring"
 )
@@ -543,12 +543,12 @@ if !ERROR_COUNT! GTR 0 (
 )
 
 echo.
-echo   [실행 중인 창] (7개 -> 4개로 통합!)
+echo   [실행 중인 창] (4개)
 echo   --------------------------------------------------------
 echo   1. Trend Video Frontend  : Next.js 개발 서버
 echo   2. MCP Debugger          : 버그 API 서버
 echo   3. Spawning Pool         : 버그 처리 워커 스폰
-echo   4. Monitoring            : Log + Build + UI Test 통합
+echo   4. Monitoring            : Log + Build 통합
 echo ============================================================
 echo.
 goto :eof
