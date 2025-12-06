@@ -33,6 +33,10 @@ REM      - Playwright 기반 UI 자동화 테스트
 REM      - 스모크 테스트 시나리오 반복 실행
 REM      - 실패 시 스크린샷/비디오 저장 + 버그 자동 등록
 REM
+REM   6. Build Monitor (build-monitor.bat, 30분 간격)
+REM      - 빌드 에러 감지 시 버그 자동 등록
+REM      - 빌드 실패 시 Frontend 서버 자동 재시작
+REM
 REM ============================================================
 
 chcp 65001 >nul
@@ -64,12 +68,25 @@ echo [1/3] Workspace update...
 if %FORCE_MODE%==1 (
     git fetch origin 2>nul
     git reset --hard origin/master 2>nul
+    echo        [OK] Reset to origin/master
 ) else (
+    REM BTS-14770: stash 전후 개수 비교
+    for /f %%i in ('git stash list 2^>nul ^| find /c "stash@"') do set WORKSPACE_BEFORE=%%i
     git stash -q 2>nul
-    set WORKSPACE_STASHED=!errorlevel!
-    git pull 2>nul
-    if !WORKSPACE_STASHED!==0 (
+    for /f %%i in ('git stash list 2^>nul ^| find /c "stash@"') do set WORKSPACE_AFTER=%%i
+    for /f "delims=" %%r in ('git pull 2^>^&1') do set GIT_RESULT=%%r
+    if "!GIT_RESULT!"=="Already up to date." (
+        echo        [OK] Already up to date
+    ) else (
+        echo        [OK] !GIT_RESULT!
+    )
+    if !WORKSPACE_AFTER! GTR !WORKSPACE_BEFORE! (
         git stash pop -q 2>nul
+        if !errorlevel! NEQ 0 (
+            echo        [WARN] Stash conflict - run 'git stash pop' manually
+        ) else (
+            echo        [OK] Local changes restored
+        )
     )
 )
 
@@ -79,12 +96,24 @@ cd trend-video-frontend
 if %FORCE_MODE%==1 (
     git fetch origin 2>nul
     git reset --hard origin/master 2>nul
+    echo        [OK] Reset to origin/master
 ) else (
+    for /f %%i in ('git stash list 2^>nul ^| find /c "stash@"') do set FRONTEND_BEFORE=%%i
     git stash -q 2>nul
-    set FRONTEND_STASHED=!errorlevel!
-    git pull 2>nul
-    if !FRONTEND_STASHED!==0 (
+    for /f %%i in ('git stash list 2^>nul ^| find /c "stash@"') do set FRONTEND_AFTER=%%i
+    for /f "delims=" %%r in ('git pull 2^>^&1') do set GIT_RESULT=%%r
+    if "!GIT_RESULT!"=="Already up to date." (
+        echo        [OK] Already up to date
+    ) else (
+        echo        [OK] !GIT_RESULT!
+    )
+    if !FRONTEND_AFTER! GTR !FRONTEND_BEFORE! (
         git stash pop -q 2>nul
+        if !errorlevel! NEQ 0 (
+            echo        [WARN] Stash conflict - run 'git stash pop' manually
+        ) else (
+            echo        [OK] Local changes restored
+        )
     )
 )
 cd ..
@@ -95,12 +124,24 @@ cd trend-video-backend
 if %FORCE_MODE%==1 (
     git fetch origin 2>nul
     git reset --hard origin/master 2>nul
+    echo        [OK] Reset to origin/master
 ) else (
+    for /f %%i in ('git stash list 2^>nul ^| find /c "stash@"') do set BACKEND_BEFORE=%%i
     git stash -q 2>nul
-    set BACKEND_STASHED=!errorlevel!
-    git pull 2>nul
-    if !BACKEND_STASHED!==0 (
+    for /f %%i in ('git stash list 2^>nul ^| find /c "stash@"') do set BACKEND_AFTER=%%i
+    for /f "delims=" %%r in ('git pull 2^>^&1') do set GIT_RESULT=%%r
+    if "!GIT_RESULT!"=="Already up to date." (
+        echo        [OK] Already up to date
+    ) else (
+        echo        [OK] !GIT_RESULT!
+    )
+    if !BACKEND_AFTER! GTR !BACKEND_BEFORE! (
         git stash pop -q 2>nul
+        if !errorlevel! NEQ 0 (
+            echo        [WARN] Stash conflict - run 'git stash pop' manually
+        ) else (
+            echo        [OK] Local changes restored
+        )
     )
 )
 cd ..
@@ -152,11 +193,12 @@ echo [2] Restart MCP Debugger
 echo [3] Restart Log Monitor
 echo [4] Restart Spawning Pool
 echo [5] Restart UI Test Loop
-echo [6] Run UI Test (once)
-echo [7] Stop ALL
-echo [8] Exit
+echo [6] Restart Build Monitor
+echo [7] Run UI Test (once)
+echo [8] Stop ALL
+echo [9] Exit
 echo ============================================================
-set /p choice="Select (0-8, Enter=0): "
+set /p choice="Select (0-9, Enter=0): "
 
 if "%choice%"=="" set choice=0
 
@@ -166,9 +208,10 @@ if "%choice%"=="2" goto RESTART_MCP
 if "%choice%"=="3" goto RESTART_LOG_MONITOR
 if "%choice%"=="4" goto RESTART_SPAWNING_POOL
 if "%choice%"=="5" goto RESTART_UI_LOOP
-if "%choice%"=="6" goto RUN_TEST
-if "%choice%"=="7" goto STOP_ALL
-if "%choice%"=="8" goto END
+if "%choice%"=="6" goto RESTART_BUILD_MONITOR
+if "%choice%"=="7" goto RUN_TEST
+if "%choice%"=="8" goto STOP_ALL
+if "%choice%"=="9" goto END
 
 echo Invalid choice.
 goto MENU
@@ -243,6 +286,16 @@ call :START_UI_TEST_LOOP
 echo UI Test Loop restarted.
 goto MENU
 
+:RESTART_BUILD_MONITOR
+echo.
+echo Restarting Build Monitor...
+echo ============================================================
+taskkill /FI "WINDOWTITLE eq Build Monitor*" /F >nul 2>&1
+timeout /t 1 /nobreak >nul
+start "Build Monitor" "%~dp0automation\build-monitor.bat"
+echo Build Monitor restarted.
+goto MENU
+
 :RUN_TEST
 echo.
 echo Running UI test (once)...
@@ -263,10 +316,12 @@ goto MENU
 
 :STOP_ALL_QUIET
 taskkill /FI "WINDOWTITLE eq Trend Video Frontend*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Frontend Watchdog*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq MCP Debugger*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Log Monitor*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Spawning Pool*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq UI Test Loop*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Build Monitor*" /F >nul 2>&1
 powershell -Command "Get-NetTCPConnection -LocalPort 2000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 goto :eof
@@ -293,7 +348,7 @@ if exist "%~dp0trend-video-frontend\.next" (
 )
 
 REM --- Step 3: Frontend 서버 시작 ---
-echo [3/8] Start Frontend, Unified Worker...
+echo [3/9] Start Frontend, Unified Worker...
 echo        - 실행: npm run dev (http://localhost:2000)
 echo        - Next.js 개발 서버 + API 라우트 + 백그라운드 워커
 cd /d "%~dp0trend-video-frontend"
@@ -301,8 +356,14 @@ REM BTS-3060: cmd /k 없이 직접 실행 (창 제목으로 식별)
 start "Trend Video Frontend" npm run dev
 cd /d "%~dp0"
 
-REM --- Step 4: MCP Debugger 시작 ---
-echo [4/8] Start MCP Debugger...
+REM --- Step 4: Frontend Watchdog 시작 (SPEC-3462) ---
+echo [4/9] Start Frontend Watchdog...
+echo        - 실행: frontend-watchdog.bat
+echo        - 역할: 5분 간격 헬스체크, 서버 다운 시 자동 재시작
+start "Frontend Watchdog" "%~dp0automation\frontend-watchdog.bat"
+
+REM --- Step 5: MCP Debugger 시작 ---
+echo [5/9] Start MCP Debugger...
 echo        - 실행: npm run start
 echo        - MCP 프로토콜 서버 + 버그 API (/api/bugs)
 cd /d "%~dp0mcp-debugger"
@@ -310,16 +371,16 @@ REM BTS-3060: cmd /k 제거 (창 제목으로 식별)
 start "MCP Debugger" npm run start
 cd /d "%~dp0"
 
-REM --- Step 5: TypeScript 빌드 ---
-echo [5/8] Build MCP Debugger TypeScript...
+REM --- Step 6: TypeScript 빌드 ---
+echo [6/9] Build MCP Debugger TypeScript...
 echo        - 실행: npx tsc
 echo        - src/*.ts -> dist/*.js 컴파일
 cd /d "%~dp0mcp-debugger"
 call npx tsc >nul 2>&1
 cd /d "%~dp0"
 
-REM --- Step 6: Log Monitor 시작 (BTS-3007) ---
-echo [6/8] Start Log Monitor...
+REM --- Step 7: Log Monitor 시작 (BTS-3007) ---
+echo [7/9] Start Log Monitor...
 echo        - 실행: node dist/log-monitor.js
 echo        - 역할: 로그 파일 실시간 감시 (chokidar)
 echo        - 감지: 에러 패턴 발견 시 bugs 테이블에 INSERT
@@ -328,8 +389,8 @@ REM BTS-3060: cmd /k 없이 직접 실행 (process.title로 식별)
 start "Log Monitor" node dist/log-monitor.js
 cd /d "%~dp0"
 
-REM --- Step 7: Spawning Pool 시작 (BTS-3055: Python 버전) ---
-echo [7/8] Start Spawning Pool (Python)...
+REM --- Step 8: Spawning Pool 시작 (BTS-3055: Python 버전) ---
+echo [8/9] Start Spawning Pool (Python)...
 echo        - python spawning-pool.py
 echo        - Claude CLI 직접 호출, 결과 처리
 echo        - 성공시 resolved, 실패시 open 롤백
@@ -338,8 +399,8 @@ REM BTS-3060: cmd /k 제거 (창 제목으로 식별)
 start "Spawning Pool" python spawning-pool.py
 cd /d "%~dp0"
 
-REM --- Step 8: UI 자동화 테스트 ---
-echo [8/8] Run UI test, Start loop...
+REM --- Step 9: UI 자동화 테스트 ---
+echo [9/10] Run UI test, Start loop...
 echo        - node automation/auto-suite.js
 echo        - Playwright smoke test
 echo        - Loop: every 10 minutes
@@ -347,6 +408,12 @@ timeout /t 5 /nobreak >nul
 REM BTS-3055: 테스트 실패해도 배치 종료 방지
 node automation/auto-suite.js --url http://localhost:2000 --name az-smoke --worker az 2>&1
 call :START_UI_TEST_LOOP
+
+REM --- Step 10: Build Monitor 시작 (BTS-14862) ---
+echo [10/10] Start Build Monitor...
+echo        - build-monitor.bat (30분 간격)
+echo        - 빌드 에러 감지 시 버그 등록 + 서버 재시작
+start "Build Monitor" "%~dp0automation\build-monitor.bat"
 
 echo.
 echo ============================================================
@@ -358,17 +425,23 @@ echo   --------------------------------------------------------
 echo   1. Frontend      : http://localhost:2000
 echo      - npm run dev (Next.js + Unified Worker)
 echo.
-echo   2. MCP Debugger  : npm run start
+echo   2. Frontend Watchdog : frontend-watchdog.bat (5분 간격)
+echo      - 헬스체크 + 서버 다운 시 자동 재시작
+echo.
+echo   3. MCP Debugger  : npm run start
 echo      - 에러 큐 관리 + 버그 API
 echo.
-echo   3. Log Monitor   : node dist/log-monitor.js
+echo   4. Log Monitor   : node dist/log-monitor.js
 echo      - 로그 감시 -> 에러 발견 시 bugs 테이블 INSERT
 echo.
-echo   4. Spawning Pool : python spawning-pool.py
+echo   5. Spawning Pool : python spawning-pool.py
 echo      - bugs 조회 -> Claude/Codex/Gemini 워커 스폰
 echo.
-echo   5. UI Test Loop  : auto-suite.js (10분 간격)
+echo   6. UI Test Loop  : auto-suite.js (10분 간격)
 echo      - Playwright 스모크 테스트 자동 반복
+echo.
+echo   7. Build Monitor : build-monitor.bat (30분 간격)
+echo      - 빌드 에러 감지 시 버그 등록 + 서버 재시작
 echo ============================================================
 echo.
 goto :eof

@@ -43,8 +43,14 @@ call :INIT_MYSQL
 
 echo [2/2] Frontend 서버 + 통합 워커 시작 중...
 cd /d "%~dp0trend-video-frontend"
+
+REM BTS-14647: 콘솔 출력을 로그 파일로 저장 (빌드 에러 감지용)
+set CONSOLE_LOG=%~dp0trend-video-frontend\logs\console.log
+if not exist "%~dp0trend-video-frontend\logs" mkdir "%~dp0trend-video-frontend\logs"
+
 REM BTS-3060: cmd /k 없이 직접 실행 (창 제목으로 식별)
-start "%FRONTEND_TITLE%" npm run dev
+REM BTS-14647: powershell로 실행하여 stdout/stderr 모두 로그 파일로 저장
+start "%FRONTEND_TITLE%" powershell -Command "npm run dev 2>&1 | Tee-Object -FilePath '%CONSOLE_LOG%' -Append"
 cd /d "%~dp0"
 
 echo.

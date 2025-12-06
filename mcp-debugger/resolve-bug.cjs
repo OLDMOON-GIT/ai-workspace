@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 /**
  * Bug resolved marker
  * Usage: node resolve-bug.cjs <bug_id> <resolution_note>

@@ -12,6 +12,7 @@ process.title = 'LogMonitor';
 import chokidar from 'chokidar';
 import fs from 'fs';
 import path from 'path';
+import { spawn, ChildProcess } from 'child_process';
 import mysql from 'mysql2/promise';
 import {
   addError,
@@ -127,6 +128,14 @@ class LogMonitor {
   private errorBuffer: Map<string, { lines: string[]; timestamp: Date }> = new Map();
   private watchedTaskLogs: Set<string> = new Set();
   private lastBugStats = { open: -1, inProgress: -1 };
+  // BTS-14862: tsc --watch 프로세스
+  private tscWatchProcess: ChildProcess | null = null;
+  private frontendPath: string = path.resolve(process.cwd(), '..', 'trend-video-frontend');
+  private tscLogPath: string = path.resolve(process.cwd(), '..', 'trend-video-frontend', 'tsc-watch.log');
+  // BTS-14862: npm run build 에러 감지 (build-check.js 통합)
+  private lastBuildErrorHash: string = '';
+  private buildCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+  private buildCheckInterval: number = 5 * 60 * 1000; // 5분
 
   async start() {
     this.running = true;
@@ -200,6 +209,260 @@ class LogMonitor {
       const timeStr = new Date().toLocaleTimeString('ko-KR');
       console.log(`  [${timeStr}] (상태) MySQL: open ${bugStats.open} | in_progress ${bugStats.inProgress} | SQLite: pending ${stats.pending}`);
     }, 60000);
+
+    // BTS-14862: tsc --watch 백그라운드 프로세스 시작 (실시간 타입 에러 감지)
+    this.startTscWatch();
+
+    // BTS-14862: npm run build 에러 감지 (5분마다 빌드 실행)
+    this.startBuildCheck();
+  }
+
+  // BTS-14862: tsc --watch 프로세스 시작
+  private startTscWatch() {
+    if (!fs.existsSync(this.frontendPath)) {
+      console.log(`  [tsc watch] 경로 없음: ${this.frontendPath}`);
+      return;
+    }
+
+    console.log('');
+    console.log('  [tsc watch] 실시간 타입 에러 감지 시작');
+
+    // 기존 로그 파일 초기화
+    fs.writeFileSync(this.tscLogPath, '', 'utf8');
+
+    // tsc --watch 프로세스 시작
+    this.tscWatchProcess = spawn('npx', ['tsc', '--noEmit', '--watch', '--preserveWatchOutput'], {
+      cwd: this.frontendPath,
+      shell: true,
+      env: { ...process.env, FORCE_COLOR: '0' }
+    });
+
+    // stdout/stderr를 로그 파일에 추가
+    this.tscWatchProcess.stdout?.on('data', (data: Buffer) => {
+      fs.appendFileSync(this.tscLogPath, data.toString(), 'utf8');
+    });
+
+    this.tscWatchProcess.stderr?.on('data', (data: Buffer) => {
+      fs.appendFileSync(this.tscLogPath, data.toString(), 'utf8');
+    });
+
+    this.tscWatchProcess.on('error', (err) => {
+      console.error(`  [tsc watch] 프로세스 에러:`, err.message);
+    });
+
+    this.tscWatchProcess.on('exit', (code) => {
+      console.log(`  [tsc watch] 프로세스 종료 (code: ${code})`);
+      this.tscWatchProcess = null;
+    });
+
+    // tsc 로그 파일 감시 시작
+    this.watchTaskLog(this.tscLogPath, 'tsc-watch');
+    console.log(`  [tsc watch] 로그 파일 감시: ${this.tscLogPath}`);
+  }
+
+  // BTS-14862: npm run build 에러 감지 시작 (5분마다 빌드 실행)
+  private startBuildCheck() {
+    if (!fs.existsSync(this.frontendPath)) {
+      console.log(`  [build check] 경로 없음: ${this.frontendPath}`);
+      return;
+    }
+
+    console.log('  [build check] 빌드 에러 감지 시작 (5분 간격)');
+
+    // 시작 시 1회 실행
+    this.checkBuild();
+
+    // 5분마다 반복 실행
+    this.buildCheckIntervalId = setInterval(() => {
+      this.checkBuild();
+    }, this.buildCheckInterval);
+  }
+
+  // BTS-14862: npm run build 실행 및 에러 감지
+  private async checkBuild(): Promise<boolean> {
+    const timeStr = new Date().toLocaleTimeString('ko-KR');
+    console.log(`  [${timeStr}] [build check] 빌드 체크 시작...`);
+
+    return new Promise((resolve) => {
+      const buildProcess = spawn('npm', ['run', 'build'], {
+        cwd: this.frontendPath,
+        shell: true,
+        env: { ...process.env, FORCE_COLOR: '0' }
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      buildProcess.stdout?.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      buildProcess.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      buildProcess.on('close', async (code) => {
+        const output = stdout + stderr;
+
+        if (code !== 0) {
+          console.log(`  [build check] 빌드 실패 (exit code: ${code})`);
+
+          // 에러 파싱
+          const errorInfo = this.parseBuildError(output);
+
+          if (errorInfo) {
+            // 중복 체크
+            const errorHash = this.hashString(errorInfo.title + (errorInfo.file || ''));
+            if (errorHash !== this.lastBuildErrorHash) {
+              this.lastBuildErrorHash = errorHash;
+              await this.registerBuildBug(errorInfo);
+            } else {
+              console.log('  [build check] (중복 에러 - 건너뜀)');
+            }
+          }
+        } else {
+          console.log(`  [build check] 빌드 성공`);
+          this.lastBuildErrorHash = ''; // 성공 시 해시 초기화
+        }
+
+        resolve(code === 0);
+      });
+
+      // 3분 타임아웃
+      setTimeout(() => {
+        buildProcess.kill();
+        console.log('  [build check] 타임아웃 - 빌드 프로세스 종료');
+        resolve(false);
+      }, 3 * 60 * 1000);
+    });
+  }
+
+  // BTS-14862: 빌드 에러 파싱 (build-check.js에서 가져옴)
+  private parseBuildError(output: string): { type: string; file?: string; line?: string; column?: string; message: string; title: string } | null {
+    // 파싱 에러 패턴
+    const parseErrorMatch = output.match(/Parsing\s+(?:ecmascript\s+)?source\s+code\s+failed[\s\S]*?(\.\/[^\s]+):(\d+):(\d+)[\s\S]*?(Expected\s+[^\n]+|Unexpected\s+[^\n]+)/i);
+    if (parseErrorMatch) {
+      return {
+        type: 'syntax_error',
+        file: parseErrorMatch[1],
+        line: parseErrorMatch[2],
+        column: parseErrorMatch[3],
+        message: parseErrorMatch[4],
+        title: `빌드 에러: ${parseErrorMatch[1]}:${parseErrorMatch[2]} - ${parseErrorMatch[4]}`
+      };
+    }
+
+    // Module not found 패턴
+    const moduleNotFoundMatch = output.match(/Module not found:\s*Can't resolve\s*'([^']+)'[\s\S]*?(\.\/[^\s]+):(\d+):(\d+)/i);
+    if (moduleNotFoundMatch) {
+      return {
+        type: 'module_not_found',
+        file: moduleNotFoundMatch[2],
+        line: moduleNotFoundMatch[3],
+        column: moduleNotFoundMatch[4],
+        message: `모듈을 찾을 수 없음: '${moduleNotFoundMatch[1]}'`,
+        title: `빌드 에러: ${moduleNotFoundMatch[2]} - 모듈 '${moduleNotFoundMatch[1]}' 없음`
+      };
+    }
+
+    // Export not found 패턴
+    const exportNotFoundMatch = output.match(/Export\s+(\w+)\s+doesn't exist in target module[\s\S]*?(\.\/[^\s]+):(\d+):(\d+)/i);
+    if (exportNotFoundMatch) {
+      return {
+        type: 'export_not_found',
+        file: exportNotFoundMatch[2],
+        line: exportNotFoundMatch[3],
+        column: exportNotFoundMatch[4],
+        message: `export '${exportNotFoundMatch[1]}'가 존재하지 않음`,
+        title: `빌드 에러: ${exportNotFoundMatch[2]} - export '${exportNotFoundMatch[1]}' 없음`
+      };
+    }
+
+    // 일반 빌드 에러 패턴
+    const buildErrorMatch = output.match(/Build error occurred[\s\S]*?Error:\s*([^\n]+)/i);
+    if (buildErrorMatch) {
+      return {
+        type: 'build_error',
+        message: buildErrorMatch[1],
+        title: `빌드 에러: ${buildErrorMatch[1].substring(0, 80)}`
+      };
+    }
+
+    // Turbopack 에러 패턴
+    const turbopackMatch = output.match(/Turbopack build failed with (\d+) errors?/i);
+    if (turbopackMatch) {
+      const errorCount = turbopackMatch[1];
+      // 첫 번째 에러 파일 찾기
+      const fileMatch = output.match(/(\.\/[^\s]+):(\d+):(\d+)/);
+      return {
+        type: 'turbopack_error',
+        file: fileMatch ? fileMatch[1] : undefined,
+        message: `Turbopack 빌드 실패: ${errorCount}개 에러`,
+        title: `빌드 에러: Turbopack ${errorCount}개 에러 ${fileMatch ? '- ' + fileMatch[1] : ''}`
+      };
+    }
+
+    // 알 수 없는 에러
+    if (output.includes('error') || output.includes('Error') || output.includes('failed')) {
+      const firstErrorLine = output.split('\n').find(line =>
+        /error|Error|failed|Failed/i.test(line)
+      );
+      if (firstErrorLine) {
+        return {
+          type: 'unknown_error',
+          message: firstErrorLine.trim().substring(0, 200),
+          title: `빌드 에러: ${firstErrorLine.trim().substring(0, 80)}`
+        };
+      }
+    }
+
+    return null;
+  }
+
+  // BTS-14862: 빌드 버그 등록
+  private async registerBuildBug(errorInfo: { type: string; file?: string; line?: string; column?: string; message: string; title: string }): Promise<void> {
+    let connection;
+    try {
+      connection = await mysql.createConnection(dbConfig);
+
+      // 중복 체크 (같은 파일+라인의 open 버그)
+      if (errorInfo.file && errorInfo.line) {
+        const [existing] = await connection.execute(
+          `SELECT id FROM bugs WHERE status = 'open' AND title LIKE ? LIMIT 1`,
+          [`%${errorInfo.file}:${errorInfo.line}%`]
+        );
+        if ((existing as any[]).length > 0) {
+          console.log(`  [build check] (이미 등록됨: BTS-${(existing as any[])[0].id})`);
+          return;
+        }
+      }
+
+      const summary = JSON.stringify(errorInfo, null, 2);
+      await connection.execute(
+        `INSERT INTO bugs (title, summary, status, priority, type, created_at, updated_at)
+         VALUES (?, ?, 'open', 'P0', 'bug', NOW(), NOW())`,
+        [errorInfo.title.substring(0, 200), summary]
+      );
+
+      const [result] = await connection.execute('SELECT LAST_INSERT_ID() as id');
+      console.log(`  [build check] BTS-${(result as any[])[0].id} 등록됨: ${errorInfo.title}`);
+
+    } catch (err: any) {
+      console.error('  [build check] 버그 등록 실패:', err.message);
+    } finally {
+      if (connection) await connection.end();
+    }
+  }
+
+  // BTS-14862: 문자열 해시 함수
+  private hashString(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString(16);
   }
 
   private scanTasksFolder(tasksDir: string) {
@@ -436,6 +699,18 @@ class LogMonitor {
       watcher.close();
     }
     this.watchers.clear();
+    // BTS-14862: tsc watch 프로세스 종료
+    if (this.tscWatchProcess) {
+      this.tscWatchProcess.kill();
+      this.tscWatchProcess = null;
+      console.log('  [tsc watch] 프로세스 종료');
+    }
+    // BTS-14862: 빌드 체크 인터벌 종료
+    if (this.buildCheckIntervalId) {
+      clearInterval(this.buildCheckIntervalId);
+      this.buildCheckIntervalId = null;
+      console.log('  [build check] 인터벌 종료');
+    }
     console.log('  모니터링 중지됨');
   }
 }

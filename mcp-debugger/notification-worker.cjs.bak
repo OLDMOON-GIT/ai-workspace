@@ -1,0 +1,383 @@
+#!/usr/bin/env node
+/**
+ * 알림 워커
+ * 10초마다 MySQL bugs 테이블을 확인하고 알림
+ * + Next.js 빌드 에러 감지 (server.log 모니터링)
+ */
+
+const mysql = require('mysql2/promise');
+const fs = require('fs');
+const path = require('path');
+
+const dbConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'trend2024',
+  database: process.env.DB_NAME || 'trend_video'
+};
+
+// 서버 로그 경로
+const SERVER_LOG_PATH = path.join(__dirname, '..', 'trend-video-frontend', 'logs', 'server.log');
+
+// 빌드 에러 패턴 (Next.js/Webpack 빌드 관련만)
+const BUILD_ERROR_PATTERNS = [
+  /Export .+ doesn't exist in target module/,
+  /Module not found.*\.tsx?/,
+  /Cannot find module.*\.tsx?/,
+  /⨯.*Build Error/i,
+  /⨯.*Compile Error/i,
+  /Failed to compile/i,
+  /error TS\d+:/i,  // TypeScript errors
+  /Unhandled Runtime Error/,
+  /Module build failed/,
+];
+
+// 마지막으로 처리한 로그 위치
+let lastLogPosition = 0;
+// 최근 감지된 에러 해시 (중복 방지)
+const recentErrors = new Set();
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function getBugs() {
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.execute(`
+      SELECT id, title, summary, status, log_path, screenshot_path,
+             created_at, updated_at, assigned_to, metadata
+      FROM bugs
+      WHERE status != 'resolved' AND status != 'closed'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+    return rows;
+  } catch (error) {
+    throw error;
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+}
+
+// 다음 버그 ID 가져오기 (bug_sequence 테이블 사용 - race condition 방지)
+async function getNextBugId() {
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+
+    // bug_sequence에서 다음 번호 생성 (원자적 연산)
+    await connection.execute(`UPDATE bug_sequence SET next_number = next_number + 1 WHERE id = 1`);
+    const [rows] = await connection.execute(`SELECT next_number FROM bug_sequence WHERE id = 1`);
+
+    const nextNum = rows?.[0]?.next_number;
+    if (!nextNum) {
+      // fallback: 기존 방식
+      const [bugRows] = await connection.execute(
+        "SELECT id FROM bugs WHERE id LIKE 'BTS-%' ORDER BY id DESC LIMIT 1"
+      );
+      if (bugRows.length > 0) {
+        const lastNum = parseInt(bugRows[0].id.replace('BTS-', ''));
+        return `BTS-${String(lastNum + 1).padStart(7, '0')}`;
+      }
+      return 'BTS-0000001';
+    }
+
+    return `BTS-${String(nextNum).padStart(7, '0')}`;
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+}
+
+// 빌드 에러를 버그로 등록
+async function registerBuildError(errorMessage, errorContext) {
+  // 너무 짧거나 모호한 에러 메시지 필터링
+  const trimmedMessage = errorMessage.trim();
+  if (!trimmedMessage || trimmedMessage.length < 10) {
+    return null;
+  }
+
+  // 무시할 패턴들
+  const ignorePhrases = [
+    'Unknown Error',
+    'Error occurred',
+    'Something went wrong',
+    'Unknown column',      // SQL 컬럼 에러 (빌드와 무관)
+    'SQLite pragma',       // SQLite 경고
+    'webpack-hmr',         // HMR 404는 정상
+    '404 in ',             // 404 응답 로그
+    'ECONNRESET',          // 네트워크 연결 리셋
+    'ETIMEDOUT',           // 타임아웃
+    'ER_NO_SUCH_TABLE',    // MySQL 테이블 없음
+    'ER_BAD_FIELD_ERROR',  // MySQL 컬럼 에러
+    '[이미지 변환',        // 이미지 변환 로그
+    '이미지 생성',         // 이미지 생성 로그
+    'scene_',              // 씬 처리 로그
+    'Python subprocess',   // Python 서브프로세스 로그
+    '- INFO -',            // Python INFO 로그
+    '- ERROR -',           // Python ERROR 로그 (빌드 에러 아님)
+    '- WARNING -',         // Python WARNING 로그
+    'GET /',               // HTTP GET 요청
+    'POST /',              // HTTP POST 요청
+    '200 in',              // 200 응답
+    '304 in',              // 304 응답
+    '500 in',              // 500 응답 (API 에러, 빌드 에러 아님)
+    '딥링크 오류',         // 딥링크 생성 실패 시 스킵 (정상 동작)
+    '이번 실행 스킵',      // 실행 스킵은 정상 동작
+    '상품 제목 생성 실패', // 상품 카테고리 스킵 (정상 동작)
+  ];
+  for (const phrase of ignorePhrases) {
+    if (trimmedMessage.includes(phrase)) {
+      return null;
+    }
+  }
+
+  // 컨텍스트에서도 체크
+  if (errorContext) {
+    for (const phrase of ignorePhrases) {
+      if (errorContext.includes(phrase)) {
+        return null;
+      }
+    }
+  }
+
+  // 에러 해시 생성 (전체 메시지 + 컨텍스트 일부)
+  const hashSource = trimmedMessage + (errorContext || '').substring(0, 200);
+  const errorHash = Buffer.from(hashSource).toString('base64').substring(0, 64);
+
+  if (recentErrors.has(errorHash)) {
+    return null; // 이미 등록된 에러
+  }
+
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+
+    // DB에서 동일 제목의 최근 버그 체크 (24시간 내)
+    const [existingBugs] = await connection.execute(
+      `SELECT id FROM bugs
+       WHERE title LIKE ?
+       AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+       LIMIT 1`,
+      [`%${trimmedMessage.substring(0, 50)}%`]
+    );
+
+    if (existingBugs.length > 0) {
+      // 이미 등록된 유사한 버그가 있음
+      recentErrors.add(errorHash);
+      return null;
+    }
+
+    const bugId = await getNextBugId();
+
+    // 에러 타입 추출
+    let errorType = 'Build Error';
+    if (errorMessage.includes('Export') && errorMessage.includes("doesn't exist")) {
+      errorType = 'Export Not Found';
+    } else if (errorMessage.includes('Module not found') || errorMessage.includes('Cannot find module')) {
+      errorType = 'Module Not Found';
+    } else if (errorMessage.includes('SyntaxError')) {
+      errorType = 'Syntax Error';
+    } else if (errorMessage.includes('TypeError')) {
+      errorType = 'Type Error';
+    } else if (errorMessage.includes('error TS')) {
+      errorType = 'TypeScript Error';
+    }
+
+    const title = `[빌드에러] ${errorType}: ${errorMessage.substring(0, 60)}...`;
+    const summary = errorMessage.substring(0, 200);
+
+    const metadata = JSON.stringify({
+      source: 'build-monitor',
+      category: 'build-error',
+      priority: 'P1',
+      severity: 'HIGH',
+      error_type: errorType,
+      full_error: errorMessage,
+      context: errorContext,
+      detected_at: new Date().toISOString()
+    });
+
+    await connection.execute(
+      `INSERT INTO bugs (id, title, summary, status, metadata, created_at, updated_at)
+       VALUES (?, ?, ?, 'open', ?, NOW(), NOW())`,
+      [bugId, title, summary, metadata]
+    );
+
+    // 최근 에러에 추가 (1시간 후 만료)
+    recentErrors.add(errorHash);
+    setTimeout(() => recentErrors.delete(errorHash), 3600000);
+
+    return bugId;
+  } catch (error) {
+    console.error('빌드 에러 등록 실패:', error.message);
+    return null;
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+}
+
+// 서버 로그에서 빌드 에러 감지
+async function checkBuildErrors() {
+  try {
+    if (!fs.existsSync(SERVER_LOG_PATH)) {
+      return [];
+    }
+
+    const stats = fs.statSync(SERVER_LOG_PATH);
+
+    // 초기화 시 파일 끝에서 시작 (기존 에러 무시)
+    if (lastLogPosition === 0) {
+      lastLogPosition = stats.size;
+      return [];
+    }
+
+    // 파일이 truncated되었으면 처음부터
+    if (stats.size < lastLogPosition) {
+      lastLogPosition = 0;
+    }
+
+    // 새로운 내용 읽기
+    const fd = fs.openSync(SERVER_LOG_PATH, 'r');
+    const bufferSize = stats.size - lastLogPosition;
+
+    if (bufferSize <= 0) {
+      fs.closeSync(fd);
+      return [];
+    }
+
+    const buffer = Buffer.alloc(bufferSize);
+    fs.readSync(fd, buffer, 0, bufferSize, lastLogPosition);
+    fs.closeSync(fd);
+
+    lastLogPosition = stats.size;
+
+    const newContent = buffer.toString('utf-8');
+    const lines = newContent.split('\n');
+
+    const errors = [];
+    let contextLines = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // 빌드 에러 패턴 확인
+      for (const pattern of BUILD_ERROR_PATTERNS) {
+        if (pattern.test(line)) {
+          // 컨텍스트 수집 (앞뒤 5줄)
+          const start = Math.max(0, i - 5);
+          const end = Math.min(lines.length, i + 5);
+          const context = lines.slice(start, end).join('\n');
+
+          errors.push({
+            message: line.replace(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*/, '').trim(),
+            context: context
+          });
+          break;
+        }
+      }
+    }
+
+    return errors;
+  } catch (error) {
+    // 로그 읽기 실패는 무시
+    return [];
+  }
+}
+
+async function notificationWorker() {
+  console.log('');
+  console.log('╔══════════════════════════════════════════════════════════════╗');
+  console.log('║           🔔 버그 알림 워커 (10초마다 체크)                  ║');
+  console.log('║           DB: MySQL trend_video.bugs                         ║');
+  console.log('║           + Next.js 빌드 에러 자동 감지                      ║');
+  console.log('╚══════════════════════════════════════════════════════════════╝');
+  console.log('');
+  console.log('  Ctrl+C로 종료');
+  console.log('');
+  console.log('────────────────────────────────────────────────────────────────');
+  console.log('');
+
+  let lastBugCount = 0;
+
+  while (true) {
+    try {
+      // 1. 빌드 에러 감지 및 자동 등록
+      const buildErrors = await checkBuildErrors();
+      for (const error of buildErrors) {
+        const bugId = await registerBuildError(error.message, error.context);
+        if (bugId) {
+          console.log(`\n[${new Date().toLocaleTimeString()}] 🔧 빌드 에러 감지 → ${bugId} 등록`);
+          console.log(`   📝 ${error.message.substring(0, 70)}...`);
+        }
+      }
+
+      // 2. DB 버그 목록 확인
+      const bugs = await getBugs();
+      const currentCount = bugs.length;
+
+      if (currentCount > 0) {
+        // 개수가 변경되었거나, 버그가 있으면 알림
+        if (currentCount !== lastBugCount) {
+          console.log(`\n[${new Date().toLocaleTimeString()}] 🚨 미해결 버그: ${currentCount}건`);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+          bugs.slice(0, 5).forEach((bug) => {
+            const statusIcon = bug.status === 'open' ? '🔴' :
+                             bug.status === 'in-progress' ? '🟡' : '⚪';
+
+            console.log(`${statusIcon} ${bug.id}`);
+            console.log(`   📝 ${bug.title}`);
+            if (bug.summary) {
+              console.log(`   💬 ${bug.summary.substring(0, 80)}...`);
+            }
+            if (bug.log_path) {
+              console.log(`   📄 ${bug.log_path}`);
+            }
+            if (bug.screenshot_path) {
+              console.log(`   📸 ${bug.screenshot_path}`);
+            }
+            if (bug.assigned_to) {
+              console.log(`   👤 담당: ${bug.assigned_to}`);
+            }
+            console.log('');
+          });
+
+          if (currentCount > 5) {
+            console.log(`   ... 외 ${currentCount - 5}건 더 있음`);
+            console.log('');
+          }
+
+          console.log('💡 확인: http://localhost:2000/admin/bugs');
+          console.log('');
+        } else {
+          // 개수가 같으면 조용히 대기
+          process.stdout.write(`\r[${new Date().toLocaleTimeString()}] 🔄 모니터링 중... (${currentCount}건 대기)`);
+        }
+      } else {
+        if (lastBugCount > 0) {
+          console.log(`\n[${new Date().toLocaleTimeString()}] ✅ 모든 버그 처리 완료!`);
+        } else {
+          process.stdout.write(`\r[${new Date().toLocaleTimeString()}] ✅ 대기 중 (버그 없음)`);
+        }
+      }
+
+      lastBugCount = currentCount;
+
+    } catch (error) {
+      console.error(`\n[${new Date().toLocaleTimeString()}] ❌ DB 조회 실패:`, error.message);
+    }
+
+    // 10초 대기
+    await sleep(10000);
+  }
+}
+
+notificationWorker().catch(console.error);

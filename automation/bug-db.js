@@ -1,4 +1,5 @@
 const mysql = require('mysql2/promise');
+const Redis = require('../mcp-debugger/node_modules/ioredis');
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
@@ -13,8 +14,46 @@ const dbConfig = {
 
 const pool = mysql.createPool(dbConfig);
 
+// Redis publish channel for bug/spec events (event push to spawning-pool)
+const REDIS_CONFIG = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT || '6379', 10),
+};
+const BUG_EVENT_CHANNEL = 'bts.bug.created';
+let redisClient = null;
+
+function getRedisClient() {
+  if (process.env.DISABLE_BUG_EVENT_PUSH === '1') return null;
+  if (redisClient) return redisClient;
+  try {
+    redisClient = new Redis(REDIS_CONFIG);
+    redisClient.on('error', (err) => {
+      console.warn(`[bug-db] Redis publish error: ${err.message}`);
+    });
+    return redisClient;
+  } catch (error) {
+    console.warn(`[bug-db] Redis init failed: ${error.message}`);
+    redisClient = null;
+    return null;
+  }
+}
+
+async function publishBugCreatedEvent(payload) {
+  const client = getRedisClient();
+  if (!client) return;
+  try {
+    await client.publish(BUG_EVENT_CHANNEL, JSON.stringify({
+      ...payload,
+      timestamp: new Date().toISOString(),
+    }));
+  } catch (error) {
+    console.warn(`[bug-db] Failed to publish bug event: ${error.message}`);
+  }
+}
+
 function now() {
-  return new Date().toISOString();
+  // BTS-3360: MySQL DATETIME 형식으로 반환 (ISO 형식 T와 Z 제거)
+  return new Date().toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
 }
 
 // BTS-3023: PID 기반 worker ID 생성
@@ -101,6 +140,23 @@ async function createBug({
   await ready;
 
   let numericId = id ? parseBugId(id) : null;
+
+  // BTS-14912: title 기반 중복 체크 (같은 title이 open/in_progress 상태면 스킵)
+  if (!numericId && title) {
+    const normalizedTitle = title.trim().substring(0, 100); // 앞 100자만 비교
+    const [existingRows] = await pool.execute(
+      `SELECT id, title, status FROM bugs
+       WHERE status IN ('open', 'in_progress')
+       AND LEFT(title, 100) = LEFT(?, 100)
+       LIMIT 1`,
+      [normalizedTitle]
+    );
+    if (existingRows && existingRows[0]) {
+      const existing = existingRows[0];
+      console.log(`[bug-db] 중복 버그 스킵: ${formatBugId(existing.id)} (${existing.status})`);
+      return formatBugId(existing.id); // 기존 버그 ID 반환
+    }
+  }
 
   try {
     if (numericId) {

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560">
+  <defs>
+    <style>
+      .box { fill:#0f172a; stroke:#64748b; stroke-width:2; rx:10; ry:10; }
+      .title { fill:#e2e8f0; font:700 18px 'Segoe UI', sans-serif; }
+      .text { fill:#cbd5e1; font:14px 'Segoe UI', sans-serif; }
+      .tag { fill:#e2e8f0; font:12px 'Segoe UI', sans-serif; }
+      .arrow { stroke:#94a3b8; stroke-width:2; marker-end:url(#arrowhead); fill:none; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect x="20" y="40" width="200" height="140" class="box"/>
+  <text x="40" y="70" class="title">Logs / Tests</text>
+  <text x="40" y="100" class="text">서비스 로그 / 워커 로그</text>
+  <text x="40" y="125" class="text">trend-video-backend 등</text>
+  <text x="40" y="150" class="text">mcp-auto-tester (테스트 실패)</text>
+
+  <rect x="260" y="40" width="220" height="140" class="box"/>
+  <text x="280" y="70" class="title">MCP Debugger</text>
+  <text x="280" y="100" class="text">monitor.ts (패턴 매칭 → addError)</text>
+  <text x="280" y="125" class="text">error_queue.sqlite</text>
+  <text x="280" y="150" class="text">CLI/MCP: add/get/claim/resolve</text>
+
+  <rect x="520" y="40" width="200" height="140" class="box"/>
+  <text x="540" y="70" class="title">MySQL Bugs (BTS)</text>
+  <text x="540" y="100" class="text">bugs 테이블 (id, type: bug|spec)</text>
+  <text x="540" y="125" class="text">bug_sequence</text>
+
+  <rect x="760" y="40" width="200" height="140" class="box"/>
+  <text x="780" y="70" class="title">Automation / UI</text>
+  <text x="780" y="100" class="text">automation/bug-db.js</text>
+  <text x="780" y="125" class="text">automation/bug-worker.js</text>
+  <text x="780" y="150" class="text">/admin/bts UI</text>
+
+  <line class="arrow" x1="220" y1="110" x2="260" y2="110"/>
+  <line class="arrow" x1="480" y1="110" x2="520" y2="110"/>
+  <line class="arrow" x1="720" y1="110" x2="760" y2="110"/>
+
+  <text x="235" y="95" class="tag">로그 패턴</text>
+  <text x="495" y="95" class="tag">bug.create / update</text>
+  <text x="735" y="95" class="tag">조회/상태변경</text>
+
+  <rect x="300" y="220" width="160" height="110" class="box"/>
+  <text x="320" y="250" class="title">입력 경로</text>
+  <text x="320" y="275" class="text">- 로그 모니터 (monitor.ts)</text>
+  <text x="320" y="295" class="text">- 테스트 실패 (mcp-auto-tester)</text>
+  <text x="320" y="315" class="text">- 수동 입력 (bug.create)</text>
+
+  <rect x="520" y="220" width="190" height="110" class="box"/>
+  <text x="540" y="250" class="title">처리</text>
+  <text x="540" y="275" class="text">- bug.claim / @디버깅</text>
+  <text x="540" y="295" class="text">- bug.update (status/note)</text>
+  <text x="540" y="315" class="text">- type=bug|spec</text>
+
+  <rect x="740" y="220" width="200" height="110" class="box"/>
+  <text x="760" y="250" class="title">조회/모니터링</text>
+  <text x="760" y="275" class="text">- /admin/bts (status/type 필터)</text>
+  <text x="760" y="295" class="text">- MCP bug.list</text>
+  <text x="760" y="315" class="text">- 기록/녹화 설정</text>
+
+  <line class="arrow" x1="380" y1="170" x2="380" y2="220"/>
+  <line class="arrow" x1="600" y1="170" x2="600" y2="220"/>
+  <line class="arrow" x1="840" y1="170" x2="840" y2="220"/>
+</svg>

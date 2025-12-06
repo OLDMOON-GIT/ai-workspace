@@ -1,0 +1,8 @@
+BTS-3460 SPEC 해결 요청
+
+제목: 내 콘텐츠 탭 필터링 로직 수정 - 대본탭(script+video), 영상탭(video), 전체탭(all)
+우선순위: P1
+설명: 대본탭: content.status가 script 또는 video인 것 표시, 영상탭: status가 video인 것만 표시, 전체탭: 모든 콘텐츠 표시
+
+작업 완료 후 반드시 실행:
+node bug.js resolve 3460 "해결 내용"

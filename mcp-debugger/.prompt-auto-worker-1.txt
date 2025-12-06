@@ -1,0 +1,4 @@
+BTS-0002364 버그: [file_missing] /api/jobs/64d9706e-89df-44ac-9037-ddb45c23c7f1/story
+요약: /api/jobs/64d9706e-89df-44ac-9037-ddb45c23c7f1/story
+로그: [2025-12-04 23:10
+위 버그를 분석하고 수정해주세요. 수정 완료 후 bugs 테이블의 status를 resolved로 변경해주세요.

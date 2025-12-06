@@ -1,0 +1,8 @@
+BTS-3461 SPEC 해결 요청
+
+제목: Spawning Pool 버그 조회 방식 개선 - API 의존성 제거
+우선순위: P0
+설명: 현재 문제: 프론트엔드 API(/api/bugs)로 버그 폴링 → 프론트 서버 죽으면 버그 조회 불가 → 버그 수정 불가 → 프론트 서버 복구 불가 (순환 의존성). 해결 방안: 1) MySQL 직접 조회 - spawning-pool.py에서 bugs 테이블 직접 폴링 (API 우회) 2) EDA 푸시 방식 - notification-worker가 버그 등록 시 spawning-pool에 이벤트 푸시 (현재 EDA 인프라 활용 가능한지 확인) 3) 별도 Node.js/Python 스크립트로 폴링. 권장: MySQL 직접 조회 + EDA 푸시 병행 (폴링은 백업용)
+
+작업 완료 후 반드시 실행:
+node bug.js resolve 3461 "해결 내용"

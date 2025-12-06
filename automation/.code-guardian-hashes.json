@@ -1,0 +1,47 @@
+{
+  "mcp-debugger/spawning-pool.py": {
+    "hash": "eaac81bf820b34d795df1c52406a0f74dc68886e7a877c2f4fdce51fc00ca74b",
+    "version": "2.1-20251206",
+    "lastChecked": "2025-12-05T18:20:55.354Z"
+  },
+  "trend-video-frontend/src/lib/mysql.ts": {
+    "hash": "417bba6e9b18240a1d9546911beb0840d976447e0a0c7043bd97561c310089be",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.355Z"
+  },
+  "automation/log-monitor.js": {
+    "hash": "4caf2ae221ff82f69ed02585514ac32289b54ad28246132ee9489155081fc582",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.362Z"
+  },
+  "CLAUDE.md": {
+    "hash": "69a945718f4fd99b0eb6202c5bcc3f5c99b7b0a29f94a990d36599372e471a89",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.363Z"
+  },
+  "CODEX.md": {
+    "hash": "69a945718f4fd99b0eb6202c5bcc3f5c99b7b0a29f94a990d36599372e471a89",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.364Z"
+  },
+  "GEMINI.md": {
+    "hash": "69a945718f4fd99b0eb6202c5bcc3f5c99b7b0a29f94a990d36599372e471a89",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.365Z"
+  },
+  "trend-video-frontend/src/app/api/automation/spawn-task/route.ts": {
+    "hash": "b16f88405c7dea76fcfe1a4adc15c80cbfee04e384d98f57bede150ff112c33b",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.356Z"
+  },
+  "trend-video-frontend/src/app/api/automation/settings/route.ts": {
+    "hash": "bda15ec9244d2c0740807cbb320c15e4add7aa241f9102f517b9c3d56a212341",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.358Z"
+  },
+  "trend-video-frontend/src/app/api/automation/scheduler/route.ts": {
+    "hash": "95237d93dc5da76c9d3bc4bc75bf4299372025df5399b2d9c7b1fb384d1cb677",
+    "version": null,
+    "lastChecked": "2025-12-05T18:20:55.360Z"
+  }
+}

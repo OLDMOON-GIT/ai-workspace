@@ -1,0 +1,73 @@
+[
+  {
+    "timestamp": "2025-12-05T18:19:21.305Z",
+    "file": "mcp-debugger/spawning-pool.py",
+    "newHash": "17583fad0c2b7b74",
+    "changeType": "new",
+    "version": "2.1-20251206"
+  },
+  {
+    "timestamp": "2025-12-05T18:19:21.307Z",
+    "file": "trend-video-frontend/src/lib/mysql.ts",
+    "newHash": "417bba6e9b18240a",
+    "changeType": "new",
+    "version": null
+  },
+  {
+    "timestamp": "2025-12-05T18:19:21.310Z",
+    "file": "automation/log-monitor.js",
+    "newHash": "4caf2ae221ff82f6",
+    "changeType": "new",
+    "version": null
+  },
+  {
+    "timestamp": "2025-12-05T18:19:21.314Z",
+    "file": "CLAUDE.md",
+    "newHash": "69a945718f4fd99b",
+    "changeType": "new",
+    "version": null
+  },
+  {
+    "timestamp": "2025-12-05T18:19:21.316Z",
+    "file": "CODEX.md",
+    "newHash": "69a945718f4fd99b",
+    "changeType": "new",
+    "version": null
+  },
+  {
+    "timestamp": "2025-12-05T18:19:21.319Z",
+    "file": "GEMINI.md",
+    "newHash": "69a945718f4fd99b",
+    "changeType": "new",
+    "version": null
+  },
+  {
+    "timestamp": "2025-12-05T18:20:55.351Z",
+    "file": "mcp-debugger/spawning-pool.py",
+    "oldHash": "17583fad0c2b7b74",
+    "newHash": "eaac81bf820b34d7",
+    "changeType": "modified",
+    "version": "2.1-20251206"
+  },
+  {
+    "timestamp": "2025-12-05T18:20:55.356Z",
+    "file": "trend-video-frontend/src/app/api/automation/spawn-task/route.ts",
+    "newHash": "b16f88405c7dea76",
+    "changeType": "new",
+    "version": null
+  },
+  {
+    "timestamp": "2025-12-05T18:20:55.358Z",
+    "file": "trend-video-frontend/src/app/api/automation/settings/route.ts",
+    "newHash": "bda15ec9244d2c07",
+    "changeType": "new",
+    "version": null
+  },
+  {
+    "timestamp": "2025-12-05T18:20:55.361Z",
+    "file": "trend-video-frontend/src/app/api/automation/scheduler/route.ts",
+    "newHash": "95237d93dc5da76c",
+    "changeType": "new",
+    "version": null
+  }
+]

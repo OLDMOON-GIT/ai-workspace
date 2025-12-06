@@ -131,6 +131,7 @@ export interface ErrorItem {
   claimed_at?: string;
   created_at: string;
   updated_at: string;
+  bug_id?: string; // MySQL bugs 테이블 연동 시 사용
 }
 
 export interface ErrorResolution {

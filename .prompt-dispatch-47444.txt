@@ -1,0 +1,8 @@
+BTS-3425 BUG 해결 요청
+
+제목: [http_error] [2025-12-06 02:55:14]  GET /api/bugs?status=in_progress&type=all&page=1&pageSize=100 500 in 39ms (co
+우선순위: P2
+설명: [2025-12-06 02:55:14]  GET /api/bugs?status=in_progress&type=all&page=1&pageSize=100 500 in 39ms (compile: 23ms, render: 16ms)
+
+작업 완료 후 반드시 실행:
+node bug.js resolve 3425 "해결 내용"
