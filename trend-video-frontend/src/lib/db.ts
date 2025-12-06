@@ -985,7 +985,9 @@ export async function getUserSessions(): Promise<UserSession[]> {
 // 세션 저장
 export async function saveUserSessions(sessions: UserSession[]): Promise<void> {
   await ensureDataDir();
-  await fs.writeFile(USER_SESSIONS_FILE, JSON.stringify(sessions, null, 2), 'utf-8');
+  await writeQueue.then(async () => {
+    await fs.writeFile(USER_SESSIONS_FILE, JSON.stringify(sessions, null, 2), 'utf-8');
+  });
 }
 
 // 세션 생성 (로그인 시)
