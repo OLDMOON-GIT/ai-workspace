@@ -6,7 +6,9 @@
  * 어느 워크스페이스에서든 동일한 DB 사용
  */
 
-import Database from 'better-sqlite3';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const Database = require('better-sqlite3');
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -21,7 +23,7 @@ if (!fs.existsSync(dataDir)) {
 
 // BTS-3014: dbPath export하여 index.ts에서 시작 로그에 사용
 export const dbPath = path.join(dataDir, 'error-queue.db');
-const db: InstanceType<typeof Database> = new Database(dbPath);
+const db = new Database(dbPath);
 
 // WAL 모드 활성화
 db.pragma('journal_mode = WAL');
