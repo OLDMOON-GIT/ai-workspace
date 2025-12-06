@@ -12,5 +12,5 @@
     "declaration": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/cicd", "src/pipeline", "src/parsers"]
+  "exclude": ["node_modules", "dist", "src/cicd", "src/pipeline", "src/parsers", "src/event-bus.ts"]
 }
