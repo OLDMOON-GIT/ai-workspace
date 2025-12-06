@@ -17,34 +17,25 @@ REM   TREND_HTTPS_PORT  - HTTPS 포트 (미설정 시 초기 설정 화면 표�
 REM   TREND_DB_HOST     - MySQL 호스트 (기본값: 127.0.0.1)
 REM   TREND_DB_PORT     - MySQL 포트 (기본값: 3306)
 REM
-REM 실행되는 프로세스:
+REM 실행되는 프로세스 (4개 창):
+REM
 REM   1. Frontend (npm run dev)
 REM      - Next.js 개발 서버 (http://localhost:TREND_HTTP_PORT)
-REM      - Unified Worker 포함 (스크립트/이미지/영상 생성)
 REM
 REM   2. MCP Debugger (npm run start)
-REM      - MCP 프로토콜 디버깅 서버
-REM      - 에러 큐 관리 및 API 제공
+REM      - 버그 API 서버
 REM
-REM   3. Log Monitor (node dist/log-monitor.js)
-REM      - 로그 파일 실시간 감시 (chokidar)
-REM      - 에러 패턴 감지 시 bugs 테이블에 자동 등록
-REM      - 감시 대상: trend-video-frontend/*.log, trend-video-backend/*.log
+REM   3. Spawning Pool (python spawning-pool.py)
+REM      - 버그 처리 워커 스폰 (별도 창 필수!)
 REM
-REM   4. Spawning Pool (python spawning-pool.py)
-REM      - bugs 테이블에서 open 상태 버그 조회
-REM      - Claude/Codex/Gemini 워커 자동 스폰
-REM      - 워커당 1개 버그 할당, 최대 4개 동시 실행
-REM      - 스폰 실패 시 자동 롤백 (in_progress -> open)
+REM   4. Monitoring (services-combined.bat) - 3개 서비스 통합
+REM      - Log Monitor: 로그 실시간 감시, 에러 자동 등록
+REM      - Build Monitor: 빌드 에러 감지 (30분 간격)
+REM      - UI Test Loop: Playwright 스모크 테스트 (10분 간격)
 REM
-REM   5. UI Test Loop (auto-suite.js, 10분 간격)
-REM      - Playwright 기반 UI 자동화 테스트
-REM      - 스모크 테스트 시나리오 반복 실행
-REM      - 실패 시 스크린샷/비디오 저장 + 버그 자동 등록
-REM
-REM   6. Build Monitor (build-monitor.bat, 30분 간격)
-REM      - 빌드 에러 감지 시 버그 자동 등록
-REM      - 빌드 실패 시 Frontend 서버 자동 재시작
+REM 헬스체크:
+REM   - 시작 후 15초 대기 → 각 서비스 상태 확인
+REM   - 실패 시 빨간색으로 에러 표시
 REM
 REM ============================================================
 
@@ -216,27 +207,23 @@ echo ============================================================
 echo [0] Restart ALL
 echo [1] Restart Frontend
 echo [2] Restart MCP Debugger
-echo [3] Restart Log Monitor
-echo [4] Restart Spawning Pool
-echo [5] Restart UI Test Loop
-echo [6] Restart Build Monitor
-echo [7] Run UI Test (once)
+echo [3] Restart Spawning Pool
+echo [4] Restart Monitoring (Log+Build+UI)
+echo [5] Run UI Test (once)
 echo [8] Stop ALL
 echo [9] Exit
-echo [S] Settings (서버/DB 설정)
+echo [S] Settings
 echo ============================================================
-set /p choice="Select (0-9, S, Enter=0): "
+set /p choice="Select (0-5, 8-9, S, Enter=0): "
 
 if "%choice%"=="" set choice=0
 
 if "%choice%"=="0" goto RESTART_ALL
 if "%choice%"=="1" goto RESTART_FRONTEND
 if "%choice%"=="2" goto RESTART_MCP
-if "%choice%"=="3" goto RESTART_LOG_MONITOR
-if "%choice%"=="4" goto RESTART_SPAWNING_POOL
-if "%choice%"=="5" goto RESTART_UI_LOOP
-if "%choice%"=="6" goto RESTART_BUILD_MONITOR
-if "%choice%"=="7" goto RUN_TEST
+if "%choice%"=="3" goto RESTART_SPAWNING_POOL
+if "%choice%"=="4" goto RESTART_MONITORING
+if "%choice%"=="5" goto RUN_TEST
 if "%choice%"=="8" goto STOP_ALL
 if "%choice%"=="9" goto END
 if /i "%choice%"=="S" goto MENU_SETTINGS
@@ -280,20 +267,6 @@ cd /d "%~dp0"
 echo MCP Debugger restarted.
 goto MENU
 
-:RESTART_LOG_MONITOR
-echo.
-echo Restarting Log Monitor...
-echo ============================================================
-taskkill /FI "WINDOWTITLE eq Log Monitor*" /F >nul 2>&1
-timeout /t 1 /nobreak >nul
-cd /d "%~dp0mcp-debugger"
-call npx tsc >nul 2>&1
-REM BTS-3060: cmd /k 없이 직접 실행 (process.title로 식별)
-start "Log Monitor" node dist/log-monitor.js
-cd /d "%~dp0"
-echo Log Monitor restarted.
-goto MENU
-
 :RESTART_SPAWNING_POOL
 echo.
 echo Restarting Spawning Pool...
@@ -301,30 +274,22 @@ echo ============================================================
 taskkill /FI "WINDOWTITLE eq Spawning Pool*" /F >nul 2>&1
 timeout /t 1 /nobreak >nul
 cd /d "%~dp0mcp-debugger"
-REM BTS-3060: cmd /k 제거 (창 제목으로 식별)
 start "Spawning Pool" python spawning-pool.py
 cd /d "%~dp0"
 echo Spawning Pool restarted.
 goto MENU
 
-:RESTART_UI_LOOP
+:RESTART_MONITORING
 echo.
-echo Restarting UI Test Loop...
+echo Restarting Monitoring Services...
 echo ============================================================
+taskkill /FI "WINDOWTITLE eq Monitoring*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Log Monitor*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq UI Test Loop*" /F >nul 2>&1
-timeout /t 1 /nobreak >nul
-call :START_UI_TEST_LOOP
-echo UI Test Loop restarted.
-goto MENU
-
-:RESTART_BUILD_MONITOR
-echo.
-echo Restarting Build Monitor...
-echo ============================================================
 taskkill /FI "WINDOWTITLE eq Build Monitor*" /F >nul 2>&1
 timeout /t 1 /nobreak >nul
-start "Build Monitor" "%~dp0automation\build-monitor.bat"
-echo Build Monitor restarted.
+start "Monitoring" "%~dp0automation\services-combined.bat"
+echo Monitoring Services restarted (Log + Build + UI Test).
 goto MENU
 
 :RUN_TEST
@@ -427,13 +392,18 @@ pause
 goto MENU
 
 :STOP_ALL_QUIET
+REM 개별 창 종료
 taskkill /FI "WINDOWTITLE eq Trend Video Frontend*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Frontend Watchdog*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq MCP Debugger*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq Log Monitor*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Spawning Pool*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Monitoring*" /F >nul 2>&1
+REM 레거시 창 (이전 버전 호환)
+taskkill /FI "WINDOWTITLE eq Frontend Watchdog*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Log Monitor*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq UI Test Loop*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Build Monitor*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Services*" /F >nul 2>&1
+REM 포트 정리
 powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTP_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 goto :eof
@@ -443,118 +413,136 @@ echo.
 echo Starting server...
 echo ============================================================
 
+REM ANSI 색상 코드 설정
+set "RED=[91m"
+set "GREEN=[92m"
+set "YELLOW=[93m"
+set "RESET=[0m"
+
+REM 에러 카운터 초기화
+set ERROR_COUNT=0
+set ERROR_LIST=
+
 REM --- Step 1: 기존 프로세스 종료 ---
-echo [1/8] Kill port %TREND_HTTP_PORT%...
-echo        - 포트 %TREND_HTTP_PORT% 사용 중인 프로세스 강제 종료
+echo [1/5] Kill port %TREND_HTTP_PORT%...
 powershell -Command "Get-NetTCPConnection -LocalPort %TREND_HTTP_PORT% -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 
 REM --- Step 2: Next.js 빌드 캐시 삭제 ---
-echo [2/8] Delete .next cache...
-echo        - Next.js 빌드 캐시 삭제 (핫 리로드 문제 방지)
+echo [2/5] Delete .next cache...
 if exist "%~dp0trend-video-frontend\.next" (
     rmdir /s /q "%~dp0trend-video-frontend\.next"
-    echo        .next deleted
+    echo        %GREEN%[OK]%RESET% .next deleted
 ) else (
-    echo        .next not found [SKIP]
+    echo        %YELLOW%[SKIP]%RESET% .next not found
 )
 
 REM --- Step 3: Frontend 서버 시작 ---
-echo [3/9] Start Frontend, Unified Worker...
-echo        - 실행: npm run dev (http://localhost:%TREND_HTTP_PORT%)
-echo        - Next.js 개발 서버 + API 라우트 + 백그라운드 워커
+echo [3/5] Start Frontend (http://localhost:%TREND_HTTP_PORT%)...
 cd /d "%~dp0trend-video-frontend"
-REM BTS-3060: cmd /k 없이 직접 실행 (창 제목으로 식별)
-REM 환경변수 PORT 설정하여 Next.js에 전달
 start "Trend Video Frontend" cmd /c "set PORT=%TREND_HTTP_PORT% && npm run dev"
 cd /d "%~dp0"
 
-REM --- Step 4: Frontend Watchdog 시작 (SPEC-3462) ---
-echo [4/9] Start Frontend Watchdog...
-echo        - 실행: frontend-watchdog.bat
-echo        - 역할: 5분 간격 헬스체크, 서버 다운 시 자동 재시작
-start "Frontend Watchdog" "%~dp0automation\frontend-watchdog.bat"
-
-REM --- Step 5: MCP Debugger 시작 ---
-echo [5/9] Start MCP Debugger...
-echo        - 실행: npm run start
-echo        - MCP 프로토콜 서버 + 버그 API (/api/bugs)
+REM --- Step 4: MCP Debugger 시작 ---
+echo [4/5] Start MCP Debugger...
 cd /d "%~dp0mcp-debugger"
-REM BTS-3060: cmd /k 제거 (창 제목으로 식별)
 start "MCP Debugger" npm run start
 cd /d "%~dp0"
 
-REM --- Step 6: TypeScript 빌드 ---
-echo [6/9] Build MCP Debugger TypeScript...
-echo        - 실행: npx tsc
-echo        - src/*.ts -> dist/*.js 컴파일
+REM --- Step 5: Spawning Pool 시작 (별도 창 - 분리 필수!) ---
+echo [5/6] Start Spawning Pool...
 cd /d "%~dp0mcp-debugger"
-call npx tsc >nul 2>&1
-cd /d "%~dp0"
-
-REM --- Step 7: Log Monitor 시작 (BTS-3007) ---
-echo [7/9] Start Log Monitor...
-echo        - 실행: node dist/log-monitor.js
-echo        - 역할: 로그 파일 실시간 감시 (chokidar)
-echo        - 감지: 에러 패턴 발견 시 bugs 테이블에 INSERT
-cd /d "%~dp0mcp-debugger"
-REM BTS-3060: cmd /k 없이 직접 실행 (process.title로 식별)
-start "Log Monitor" node dist/log-monitor.js
-cd /d "%~dp0"
-
-REM --- Step 8: Spawning Pool 시작 (BTS-3055: Python 버전) ---
-echo [8/9] Start Spawning Pool (Python)...
-echo        - python spawning-pool.py
-echo        - Claude CLI 직접 호출, 결과 처리
-echo        - 성공시 resolved, 실패시 open 롤백
-cd /d "%~dp0mcp-debugger"
-REM BTS-3060: cmd /k 제거 (창 제목으로 식별)
 start "Spawning Pool" python spawning-pool.py
 cd /d "%~dp0"
 
-REM --- Step 9: UI 자동화 테스트 ---
-echo [9/10] Run UI test, Start loop...
-echo        - node automation/auto-suite.js
-echo        - Playwright smoke test
-echo        - Loop: every 10 minutes
-timeout /t 5 /nobreak >nul
-REM BTS-3055: 테스트 실패해도 배치 종료 방지
-node automation/auto-suite.js --url http://localhost:%TREND_HTTP_PORT% --name az-smoke --worker az 2>&1
-call :START_UI_TEST_LOOP
+REM --- Step 6: 모니터링 서비스 통합 시작 (Log Monitor + Build Monitor + UI Test) ---
+echo [6/6] Start Monitoring Services...
+echo        - Log Monitor, Build Monitor, UI Test Loop
+start "Monitoring" "%~dp0automation\services-combined.bat"
 
-REM --- Step 10: Build Monitor 시작 (BTS-14862) ---
-echo [10/10] Start Build Monitor...
-echo        - build-monitor.bat (30분 간격)
-echo        - 빌드 에러 감지 시 버그 등록 + 서버 재시작
-start "Build Monitor" "%~dp0automation\build-monitor.bat"
+REM --- 헬스체크 대기 ---
+echo.
+echo Waiting for servers to start (15 seconds)...
+timeout /t 15 /nobreak >nul
 
+REM --- 헬스체크 ---
 echo.
 echo ============================================================
-echo   All servers started!
+echo   Health Check
 echo ============================================================
+
+REM Frontend 체크
+powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:%TREND_HTTP_PORT%' -TimeoutSec 5 -UseBasicParsing; exit 0 } catch { exit 1 }" >nul 2>&1
+if !errorlevel! EQU 0 (
+    echo   %GREEN%[OK]%RESET%   Frontend         http://localhost:%TREND_HTTP_PORT%
+) else (
+    echo   %RED%[FAIL]%RESET% Frontend         http://localhost:%TREND_HTTP_PORT%
+    set /a ERROR_COUNT+=1
+    set "ERROR_LIST=!ERROR_LIST! Frontend"
+)
+
+REM MCP Debugger 체크 (포트 3010)
+powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:3010' -TimeoutSec 5 -UseBasicParsing; exit 0 } catch { exit 1 }" >nul 2>&1
+if !errorlevel! EQU 0 (
+    echo   %GREEN%[OK]%RESET%   MCP Debugger     http://localhost:3010
+) else (
+    echo   %RED%[FAIL]%RESET% MCP Debugger     http://localhost:3010
+    set /a ERROR_COUNT+=1
+    set "ERROR_LIST=!ERROR_LIST! MCP-Debugger"
+)
+
+REM Spawning Pool 창 체크
+tasklist /FI "WINDOWTITLE eq Spawning Pool*" 2>nul | find "cmd.exe" >nul 2>&1
+if !errorlevel! EQU 0 (
+    echo   %GREEN%[OK]%RESET%   Spawning Pool    버그 처리 워커 스폰
+) else (
+    REM Python 프로세스로 체크
+    tasklist 2>nul | find "python.exe" >nul 2>&1
+    if !errorlevel! EQU 0 (
+        echo   %GREEN%[OK]%RESET%   Spawning Pool    버그 처리 워커 스폰
+    ) else (
+        echo   %RED%[FAIL]%RESET% Spawning Pool    버그 처리 워커 스폰
+        set /a ERROR_COUNT+=1
+        set "ERROR_LIST=!ERROR_LIST! Spawning-Pool"
+    )
+)
+
+REM Monitoring 창 체크
+tasklist /FI "WINDOWTITLE eq Monitoring*" 2>nul | find "cmd.exe" >nul 2>&1
+if !errorlevel! EQU 0 (
+    echo   %GREEN%[OK]%RESET%   Monitoring       Log + Build + UI Test
+) else (
+    echo   %RED%[FAIL]%RESET% Monitoring       Log + Build + UI Test
+    set /a ERROR_COUNT+=1
+    set "ERROR_LIST=!ERROR_LIST! Monitoring"
+)
+
+echo ============================================================
+
+REM 에러 요약
+if !ERROR_COUNT! GTR 0 (
+    echo.
+    echo   %RED%============================================================%RESET%
+    echo   %RED%  ERROR: !ERROR_COUNT! service(s) failed to start!%RESET%
+    echo   %RED%  Failed:!ERROR_LIST!%RESET%
+    echo   %RED%============================================================%RESET%
+    echo.
+    echo   * Check the windows for error messages
+    echo   * Try restarting individual services from menu
+) else (
+    echo.
+    echo   %GREEN%============================================================%RESET%
+    echo   %GREEN%  All services started successfully!%RESET%
+    echo   %GREEN%============================================================%RESET%
+)
+
 echo.
-echo   [프로세스 목록]
+echo   [실행 중인 창] (7개 -> 4개로 통합!)
 echo   --------------------------------------------------------
-echo   1. Frontend      : http://localhost:%TREND_HTTP_PORT%
-echo      - npm run dev (Next.js + Unified Worker)
-echo.
-echo   2. Frontend Watchdog : frontend-watchdog.bat (5분 간격)
-echo      - 헬스체크 + 서버 다운 시 자동 재시작
-echo.
-echo   3. MCP Debugger  : npm run start
-echo      - 에러 큐 관리 + 버그 API
-echo.
-echo   4. Log Monitor   : node dist/log-monitor.js
-echo      - 로그 감시 -> 에러 발견 시 bugs 테이블 INSERT
-echo.
-echo   5. Spawning Pool : python spawning-pool.py
-echo      - bugs 조회 -> Claude/Codex/Gemini 워커 스폰
-echo.
-echo   6. UI Test Loop  : auto-suite.js (10분 간격)
-echo      - Playwright 스모크 테스트 자동 반복
-echo.
-echo   7. Build Monitor : build-monitor.bat (30분 간격)
-echo      - 빌드 에러 감지 시 버그 등록 + 서버 재시작
+echo   1. Trend Video Frontend  : Next.js 개발 서버
+echo   2. MCP Debugger          : 버그 API 서버
+echo   3. Spawning Pool         : 버그 처리 워커 스폰
+echo   4. Monitoring            : Log + Build + UI Test 통합
 echo ============================================================
 echo.
 goto :eof
