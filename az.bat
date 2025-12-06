@@ -251,7 +251,7 @@ cd /d "%~dp0trend-video-frontend"
 REM BTS-3060: cmd /k 없이 직접 실행 (창 제목으로 식별)
 REM 환경변수 PORT 설정하여 Next.js에 전달
 set PORT=%TREND_HTTP_PORT%
-start "Trend Video Frontend" cmd /c "set PORT=%TREND_HTTP_PORT% && npm run dev"
+start "Trend Video Frontend" cmd /c "npm run dev -- -p %TREND_HTTP_PORT%"
 cd /d "%~dp0"
 echo Frontend restarted.
 goto MENU
@@ -446,7 +446,7 @@ if exist "%~dp0trend-video-frontend\.next" (
 REM --- Step 3: Frontend 서버 시작 ---
 echo [3/5] Start Frontend (http://localhost:%TREND_HTTP_PORT%)...
 cd /d "%~dp0trend-video-frontend"
-start "Trend Video Frontend" cmd /c "set PORT=%TREND_HTTP_PORT% && npm run dev"
+start "Trend Video Frontend" cmd /c "npm run dev -- -p %TREND_HTTP_PORT%"
 cd /d "%~dp0"
 
 REM --- Step 4: MCP Debugger 시작 ---
