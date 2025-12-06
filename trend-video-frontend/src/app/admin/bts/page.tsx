@@ -182,7 +182,10 @@ export default function BugsPage() {
       }
 
       const response = await fetch(`/api/bugs?${params}`, { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to fetch bugs');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch bugs: ${response.status} ${response.statusText} - ${errorText}`);
+      }
 
       const data = await response.json();
       setBugs(data.bugs || []);

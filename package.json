@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "build": "cd trend-video-frontend && npm run build",
     "auto:test": "node automation/run-ui-check.js",
     "auto:bugs": "node automation/bug-worker.js list",
     "auto:run": "node automation/auto-suite.js",
