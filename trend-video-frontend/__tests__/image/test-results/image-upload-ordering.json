@@ -1,0 +1,49 @@
+{
+  "testName": "이미지 업로드 순서 검증",
+  "category": "버그 수정 검증",
+  "timestamp": "2025-11-26T09:17:33.924Z",
+  "passed": false,
+  "summary": {
+    "total": 7,
+    "passed": 5,
+    "failed": 2,
+    "percentage": 71.4
+  },
+  "tests": [
+    {
+      "name": "1. 컴포넌트 분석",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\image\\trend-video-frontend\\src\\components\\MediaUploadBox.tsx'"
+    },
+    {
+      "name": "2. 페이지 분석",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\image\\trend-video-frontend\\src\\app\\automation\\page.tsx'"
+    },
+    {
+      "name": "3-1. 시퀀스 번호 정렬",
+      "passed": true,
+      "message": "1→2→3 (올바름)"
+    },
+    {
+      "name": "3-2. lastModified 정렬",
+      "passed": true,
+      "message": "1000→2000→3000 (올바름)"
+    },
+    {
+      "name": "3-3. 혼합 정렬 (시퀀스+시간)",
+      "passed": true,
+      "message": "시퀀스우선→시간순 (올바름)"
+    },
+    {
+      "name": "4. 코드 플로우",
+      "passed": true,
+      "message": "정렬 → 부모 전달 → FormData 전달 확인"
+    },
+    {
+      "name": "5-1. 서버 로그",
+      "passed": true,
+      "message": "로그 파일 없음 (정상 - 아직 실행 안함)"
+    }
+  ]
+}

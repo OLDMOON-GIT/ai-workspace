@@ -1,0 +1,39 @@
+{
+  "testName": "내 콘텐츠 페이지",
+  "category": "내 콘텐츠 페이지",
+  "timestamp": "2025-11-26T09:17:31.979Z",
+  "passed": false,
+  "summary": {
+    "total": 5,
+    "passed": 0,
+    "failed": 5,
+    "percentage": 0
+  },
+  "tests": [
+    {
+      "name": "1. 작업 목록 조회",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\my-content\\page.tsx'"
+    },
+    {
+      "name": "2. 작업 상태 표시",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\my-content\\page.tsx'"
+    },
+    {
+      "name": "3. 폴더 열기",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\my-content\\page.tsx'"
+    },
+    {
+      "name": "4. 삭제 기능",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\my-content\\page.tsx'"
+    },
+    {
+      "name": "5. 필터링",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\my-content\\page.tsx'"
+    }
+  ]
+}

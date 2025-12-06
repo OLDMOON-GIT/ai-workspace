@@ -1,0 +1,4 @@
+https://console.cloud.google.com/apis/credentials?project=gen-lang-client-0657929856
+
+trend-video-web에서 클라이언트 보안 비밀번호
++ Add secret

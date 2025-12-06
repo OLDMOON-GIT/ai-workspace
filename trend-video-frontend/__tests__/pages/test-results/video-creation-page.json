@@ -1,0 +1,49 @@
+{
+  "testName": "영상 제작 페이지",
+  "category": "영상 제작 페이지",
+  "timestamp": "2025-11-26T09:17:32.008Z",
+  "passed": false,
+  "summary": {
+    "total": 7,
+    "passed": 0,
+    "failed": 7,
+    "percentage": 0
+  },
+  "tests": [
+    {
+      "name": "1. JSON 업로드",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\page.tsx'"
+    },
+    {
+      "name": "2. 이미지 업로드",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\page.tsx'"
+    },
+    {
+      "name": "3. 이미지 순서 정렬",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\page.tsx'"
+    },
+    {
+      "name": "4. 드래그 재정렬",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\page.tsx'"
+    },
+    {
+      "name": "5. 포맷 선택",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\page.tsx'"
+    },
+    {
+      "name": "6. TTS 음성",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\page.tsx'"
+    },
+    {
+      "name": "7. 이미지 모델",
+      "passed": false,
+      "message": "ENOENT: no such file or directory, open 'C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\__tests__\\pages\\trend-video-frontend\\src\\app\\page.tsx'"
+    }
+  ]
+}

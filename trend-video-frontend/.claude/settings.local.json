@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe\" -u root -ptrend2024 trend_video -e \"DESCRIBE bugs\")",
+      "Bash(dir /b \"C:\\Users\\oldmoon\\workspace\\trend-video-frontend\\public\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

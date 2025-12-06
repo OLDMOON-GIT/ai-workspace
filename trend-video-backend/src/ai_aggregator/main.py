@@ -1,0 +1,500 @@
+import asyncio
+import sys
+import os
+
+# Fix Windows console encoding BEFORE any imports that might use it
+if sys.platform == 'win32':
+    # Set UTF-8 encoding via environment variables
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    os.environ['PYTHONUTF8'] = '1'
+
+    # Set console to UTF-8
+    try:
+        os.system('chcp 65001 > nul 2>&1')
+    except:
+        pass
+
+from playwright.async_api import async_playwright
+from .agents import ChatGPTAgent, ClaudeAgent, GeminiAgent, GrokAgent
+from .aggregator import ResponseAggregator
+from colorama import Fore, Style, init
+import argparse
+
+# Initialize colorama with strip=False to preserve ANSI codes and UTF-8
+# On Windows, colorama wraps stdout which can cause encoding issues
+init(autoreset=True, strip=False, convert=False)
+
+# Override print to handle encoding errors on Windows
+import builtins
+_original_print = builtins.print
+
+def safe_print(*args, **kwargs):
+    """Safely print, handling encoding errors by removing problematic characters"""
+    try:
+        _original_print(*args, **kwargs)
+    except UnicodeEncodeError:
+        # Convert args to safe ASCII
+        safe_args = []
+        for arg in args:
+            if isinstance(arg, str):
+                safe_args.append(arg.encode('ascii', 'ignore').decode('ascii'))
+            else:
+                safe_args.append(str(arg).encode('ascii', 'ignore').decode('ascii'))
+        _original_print(*safe_args, **kwargs)
+
+if sys.platform == 'win32':
+    builtins.print = safe_print
+
+
+async def wait_for_response(agent, aggregator: ResponseAggregator):
+    """Wait for agent's response and collect it"""
+    try:
+        print(f"{Fore.CYAN}[{agent.get_name()}] Waiting for complete response...{Style.RESET_ALL}")
+        response = await agent.wait_for_complete_response()
+        aggregator.add_response(agent.get_name(), response)
+        print(f"{Fore.GREEN}[{agent.get_name()}] [OK] Response received!{Style.RESET_ALL}")
+    except Exception as e:
+        error_msg = f"Failed to get response: {str(e)}"
+        print(f"{Fore.RED}[{agent.get_name()}] {error_msg}{Style.RESET_ALL}")
+        aggregator.add_response(agent.get_name(), f"Error: {error_msg}")
+
+
+async def main(question: str, headless: bool = False, agents_to_use: list = None, use_real_chrome: bool = True, auto_close: bool = False):
+    """Main function to run all agents"""
+
+    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'='*80}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}Multi-AI Aggregator{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}{'='*80}{Style.RESET_ALL}\n")
+
+    # 프롬프트 전체 대신 요약만 출력
+    prompt_type = "일반"
+    prompt_title = ""
+    if "상품 마케팅" in question or "상품 소개" in question:
+        prompt_type = "상품 대본"
+    elif "Sora2" in question or "sora" in question.lower():
+        prompt_type = "Sora2 프롬프트"
+    elif "숏폼" in question or "shortform" in question.lower():
+        prompt_type = "숏폼 대본"
+
+    # 제목 추출 시도
+    import re
+    title_match = re.search(r'- 제목[:\s]*(.+?)(?:\n|$)', question)
+    if title_match:
+        prompt_title = title_match.group(1).strip()[:50]
+
+    print(f"{Fore.GREEN}Question:{Style.RESET_ALL} [{prompt_type}] {prompt_title} ({len(question)}자)\n")
+    print(f"{Fore.CYAN}Mode:{Style.RESET_ALL} {'Headless' if headless else 'Headful (visible browser)'}\n")
+
+    aggregator = ResponseAggregator()
+
+    async with async_playwright() as p:
+        import os
+        import pathlib
+
+        print(f"{Fore.GREEN}[INFO] Launching browser...{Style.RESET_ALL}\n")
+
+        # Use persistent context to save login sessions (same profile as setup_login.py)
+        # 스크립트 위치 기준으로 프로젝트 루트 찾기 (trend-video-backend)
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # src/ai_aggregator
+        project_root = os.path.dirname(os.path.dirname(script_dir))  # trend-video-backend
+        automation_profile = os.path.join(project_root, '.chrome-automation-profile')
+        pathlib.Path(automation_profile).mkdir(exist_ok=True)
+
+        # 절대 경로 출력
+        print(f"{Fore.CYAN}[INFO] 프로젝트 루트: {project_root}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}[INFO] Chrome 프로필 경로: {automation_profile}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}[INFO] 저장된 로그인 세션 사용 (로그인 안 되어 있으면 수동 로그인 필요){Style.RESET_ALL}\n")
+
+        # Chrome 프로필 잠금 파일 제거 (충돌 방지)
+        lock_files = [
+            os.path.join(automation_profile, 'SingletonLock'),
+            os.path.join(automation_profile, 'SingletonCookie'),
+            os.path.join(automation_profile, 'SingletonSocket'),
+            os.path.join(automation_profile, 'lockfile'),
+        ]
+        # BTS-2975: 잠금 파일 제거 실패 시 Chrome 프로세스 강제 종료 후 재시도
+        lock_remove_failed = False
+        for lock_file in lock_files:
+            try:
+                if os.path.exists(lock_file):
+                    os.remove(lock_file)
+                    print(f"{Fore.GREEN}[INFO] 잠금 파일 제거: {os.path.basename(lock_file)}{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.YELLOW}[WARN] 잠금 파일 제거 실패: {lock_file} - {e}{Style.RESET_ALL}")
+                lock_remove_failed = True
+
+        if lock_remove_failed:
+            print(f"{Fore.YELLOW}[INFO] Chrome 프로필 잠금 해제를 위해 관련 프로세스 종료 시도...{Style.RESET_ALL}")
+            try:
+                import subprocess
+                subprocess.run(
+                    ['powershell', '-Command',
+                     "Get-Process chrome -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -like '*chrome-automation-profile*'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
+                    capture_output=True, timeout=10
+                )
+                import time
+                time.sleep(2)
+                for lock_file in lock_files:
+                    try:
+                        if os.path.exists(lock_file):
+                            os.remove(lock_file)
+                            print(f"{Fore.GREEN}[INFO] 잠금 파일 제거 (재시도 성공): {os.path.basename(lock_file)}{Style.RESET_ALL}")
+                    except:
+                        print(f"{Fore.RED}[ERROR] 잠금 파일 제거 재시도 실패: {lock_file}{Style.RESET_ALL}")
+            except Exception as kill_error:
+                print(f"{Fore.YELLOW}[WARN] 프로세스 종료 시도 실패: {kill_error}{Style.RESET_ALL}")
+
+        # BTS-3157, BTS-3150: launch_persistent_context 에러 핸들링 개선 (재시도 로직 + exponential backoff)
+        max_launch_retries = 3
+        context = None
+        last_launch_error = None
+
+        for launch_attempt in range(max_launch_retries):
+            try:
+                if launch_attempt > 0:
+                    # BTS-3150: exponential backoff (2초, 4초, 8초...)
+                    wait_time = 2 * (2 ** launch_attempt)
+                    print(f"{Fore.YELLOW}[INFO] 브라우저 실행 재시도 ({launch_attempt + 1}/{max_launch_retries}), {wait_time}초 대기...{Style.RESET_ALL}")
+                    import time
+                    time.sleep(wait_time)
+
+                    # BTS-3157, BTS-3150: 재시도 전 lock 파일 다시 정리
+                    for lock_file in lock_files:
+                        try:
+                            if os.path.exists(lock_file):
+                                os.remove(lock_file)
+                                print(f"{Fore.GREEN}[INFO] 재시도 시 잠금 파일 제거: {os.path.basename(lock_file)}{Style.RESET_ALL}")
+                        except:
+                            pass
+
+                    # BTS-3150: 재시도 전 Chrome 프로세스 정리 추가
+                    try:
+                        import subprocess
+                        subprocess.run(
+                            ['powershell', '-Command',
+                             "Get-Process chrome -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -like '*chrome-automation-profile*'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
+                            capture_output=True, timeout=10
+                        )
+                        time.sleep(1)  # 프로세스 종료 대기
+                    except:
+                        pass
+
+                print(f"{Fore.CYAN}[INFO] Chrome 브라우저 실행 시도 (channel='chrome')...{Style.RESET_ALL}")
+                context = await p.chromium.launch_persistent_context(
+                    automation_profile,
+                    headless=headless,
+                    channel='chrome',
+                    args=[
+                        '--start-maximized',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--no-first-run',
+                        '--no-default-browser-check',
+                        '--disable-features=IsolateOrigins,site-per-process',
+                        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    ],
+                    accept_downloads=True,
+                    ignore_https_errors=True,
+                    timeout=60000,
+                    viewport=None  # 최대화
+                )
+                print(f"{Fore.GREEN}[INFO] ✅ Chrome 브라우저 실행 성공!{Style.RESET_ALL}")
+                print(f"{Fore.GREEN}[INFO] 브라우저 타입: Chrome (실제 Chrome 사용){Style.RESET_ALL}\n")
+                break  # 성공 시 루프 탈출
+
+            except Exception as e:
+                error_str = str(e)
+                last_launch_error = e
+
+                # BTS-3157: "Target page, context or browser has been closed" 에러 체크
+                if "has been closed" in error_str or "closed" in error_str.lower():
+                    print(f"{Fore.RED}[ERROR] 브라우저가 예기치 않게 종료됨: {error_str}{Style.RESET_ALL}")
+                    if launch_attempt < max_launch_retries - 1:
+                        print(f"{Fore.YELLOW}[INFO] 브라우저 프로세스 정리 후 재시도합니다...{Style.RESET_ALL}")
+                        try:
+                            import subprocess
+                            subprocess.run(
+                                ['powershell', '-Command',
+                                 "Get-Process chrome -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -like '*chrome-automation-profile*'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
+                                capture_output=True, timeout=10
+                            )
+                        except:
+                            pass
+                        continue  # 재시도
+                    else:
+                        print(f"{Fore.RED}[ERROR] 브라우저 실행 재시도 횟수 초과. 종료합니다.{Style.RESET_ALL}")
+                        raise Exception(f"Browser launch failed after {max_launch_retries} attempts: {error_str}")
+
+                # Chrome 실행 실패 시 Chromium으로 대체 시도
+                print(f"{Fore.YELLOW}[WARN] Chrome 실행 실패, Chromium으로 대체: {e}{Style.RESET_ALL}")
+
+                # BTS-3150: Chromium 시도 전 lock 파일 및 프로세스 정리
+                print(f"{Fore.CYAN}[INFO] Chromium 실행 전 프로세스 정리 중...{Style.RESET_ALL}")
+                import time
+                try:
+                    import subprocess
+                    subprocess.run(
+                        ['powershell', '-Command',
+                         "Get-Process chrome -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -like '*chrome-automation-profile*'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
+                        capture_output=True, timeout=10
+                    )
+                except:
+                    pass
+                time.sleep(2)  # 프로세스 종료 대기
+
+                for lock_file in lock_files:
+                    try:
+                        if os.path.exists(lock_file):
+                            os.remove(lock_file)
+                    except:
+                        pass
+
+                print(f"{Fore.CYAN}[INFO] Chromium 브라우저 실행 시도...{Style.RESET_ALL}")
+                try:
+                    context = await p.chromium.launch_persistent_context(
+                        automation_profile,
+                        headless=headless,
+                        args=[
+                            '--disable-blink-features=AutomationControlled',
+                            '--disable-dev-shm-usage',
+                            '--no-first-run',
+                            '--no-default-browser-check',
+                            '--disable-features=IsolateOrigins,site-per-process',
+                            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                        ],
+                        accept_downloads=True,
+                        ignore_https_errors=True,
+                        timeout=60000,
+                    )
+                    print(f"{Fore.GREEN}[INFO] ✅ Chromium 브라우저 실행 성공!{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN}[INFO] 브라우저 타입: Chromium (Playwright 내장){Style.RESET_ALL}\n")
+                    break  # Chromium 성공 시 루프 탈출
+                except Exception as chromium_e:
+                    chromium_error = str(chromium_e)
+                    if "has been closed" in chromium_error or "closed" in chromium_error.lower():
+                        print(f"{Fore.RED}[ERROR] Chromium도 예기치 않게 종료됨: {chromium_error}{Style.RESET_ALL}")
+                        if launch_attempt < max_launch_retries - 1:
+                            continue  # 재시도
+                    last_launch_error = chromium_e
+                    if launch_attempt == max_launch_retries - 1:
+                        raise Exception(f"All browser launch attempts failed: {chromium_error}")
+
+        if context is None:
+            raise Exception(f"Failed to launch browser after {max_launch_retries} attempts: {last_launch_error}")
+
+        # Remove navigator.webdriver flag
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+
+        # Default to all agents if none specified
+        if agents_to_use is None:
+            agents_to_use = ['chatgpt', 'claude', 'gemini', 'grok']
+
+        # Create agent instances based on selection
+        agents = []
+        agent_map = {
+            'chatgpt': ChatGPTAgent,
+            'claude': ClaudeAgent,
+            'gemini': GeminiAgent,
+            'grok': GrokAgent
+        }
+
+        # No skip login - always check login status
+        skip_login = False
+
+        print(f"{Fore.CYAN}[INFO] Agent 생성 중...{Style.RESET_ALL}")
+        for agent_name in agents_to_use:
+            if agent_name.lower() in agent_map:
+                print(f"{Fore.CYAN}[INFO] - {agent_name} Agent 생성 (동일한 Chrome context 사용){Style.RESET_ALL}")
+                agents.append(agent_map[agent_name.lower()](context, headless, skip_login))
+
+        if not agents:
+            print(f"{Fore.RED}No valid agents selected!{Style.RESET_ALL}")
+            await context.close()
+            return
+
+        print(f"{Fore.GREEN}[INFO] ✅ Agent 생성 완료!{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Selected agents:{Style.RESET_ALL} {', '.join([a.get_name() for a in agents])}")
+        print(f"{Fore.YELLOW}모든 Agent는 동일한 Chrome 프로필을 공유합니다: {automation_profile}{Style.RESET_ALL}\n")
+
+        # Phase 1: Open tabs sequentially and send questions
+        print(f"{Fore.CYAN}[*] Opening tabs and sending questions sequentially...{Style.RESET_ALL}\n")
+        login_required = False
+        for agent in agents:
+            try:
+                print(f"{Fore.CYAN}[{agent.get_name()}] Opening tab...{Style.RESET_ALL}")
+                await agent.initialize()
+
+                print(f"{Fore.CYAN}[{agent.get_name()}] Checking login...{Style.RESET_ALL}")
+                await agent.login()
+
+                print(f"{Fore.CYAN}[{agent.get_name()}] Sending question...{Style.RESET_ALL}")
+                # Just send the question, don't wait for response yet
+                await agent.send_question_async(question)
+
+                print(f"{Fore.GREEN}[{agent.get_name()}] [OK] Question sent! Moving to next agent...{Style.RESET_ALL}\n")
+
+            except Exception as e:
+                error_msg = f"Failed to send question: {str(e)}"
+                print(f"{Fore.RED}[{agent.get_name()}] {error_msg}{Style.RESET_ALL}\n")
+
+                # Check if login is required
+                if "login required" in error_msg.lower() or "login session expired" in error_msg.lower():
+                    login_required = True
+                    print(f"{Fore.YELLOW}[!] Login required detected!{Style.RESET_ALL}")
+                    if headless:
+                        print(f"{Fore.YELLOW}[!] Cannot login in headless mode. Please run with --headless flag disabled or login first.{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.CYAN}[!] Browser is visible. Please login manually in the browser window.{Style.RESET_ALL}")
+                        print(f"{Fore.CYAN}[!] Waiting 60 seconds for manual login...{Style.RESET_ALL}")
+                        await asyncio.sleep(60)
+                        print(f"{Fore.CYAN}[!] Retrying after login wait...{Style.RESET_ALL}")
+                        # Retry login and send
+                        try:
+                            await agent.login()
+                            await agent.send_question_async(question)
+                            print(f"{Fore.GREEN}[{agent.get_name()}] [OK] Question sent after login!{Style.RESET_ALL}\n")
+                            continue
+                        except Exception as retry_e:
+                            print(f"{Fore.RED}[{agent.get_name()}] Retry failed: {str(retry_e)}{Style.RESET_ALL}\n")
+
+                aggregator.add_response(agent.get_name(), f"Error: {error_msg}")
+
+        # Phase 2: Now wait for all responses in parallel
+        print(f"{Fore.CYAN}[*] All questions sent! Now waiting for all responses in parallel...{Style.RESET_ALL}\n")
+
+        wait_tasks = []
+        for agent in agents:
+            if agent.page:  # Only if the agent was successfully initialized
+                wait_tasks.append(wait_for_response(agent, aggregator))
+
+        if wait_tasks:
+            await asyncio.gather(*wait_tasks, return_exceptions=True)
+
+        # Properly close the context to save cookies
+        print(f"\n{Fore.YELLOW}[INFO] All agents completed! Saving session data...{Style.RESET_ALL}")
+
+        # Give user a moment to see the results
+        print(f"{Fore.CYAN}[TIP] Check the browser tabs to see all responses!{Style.RESET_ALL}")
+
+        # Display results (inside async with block)
+        aggregator.display_responses()
+        aggregator.generate_summary()
+
+        # Auto-save to file with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"ai_responses_{timestamp}.txt"
+        aggregator.save_to_file(filename)
+
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}Done!{Style.RESET_ALL}")
+
+        if auto_close:
+            print(f"\n{Fore.YELLOW}Auto-close enabled. Browser will close in 3 seconds...{Style.RESET_ALL}")
+            await asyncio.sleep(3)
+            await context.close()
+            print(f"{Fore.GREEN}Browser closed.{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.YELLOW}Browser will remain open. Close manually or press Ctrl+C to exit.{Style.RESET_ALL}")
+            # Keep the script running (browser stays open)
+            # User can close browser manually or terminate script
+            await asyncio.sleep(999999)  # Sleep indefinitely
+
+
+def interactive_mode():
+    """Interactive mode for continuous questions"""
+    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'='*80}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}Multi-AI Aggregator - Interactive Mode{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}{'='*80}{Style.RESET_ALL}\n")
+
+    print("Type your questions and get answers from multiple AI models.")
+    print(f"{Fore.CYAN}Commands:{Style.RESET_ALL}")
+    print("  - Type 'quit' or 'exit' to stop")
+    print("  - Type 'agents' to select which AI agents to use")
+    print("  - Type 'mode' to toggle headless/headful mode")
+    print()
+
+    headless = False
+    agents_to_use = ['chatgpt', 'claude', 'gemini', 'grok']
+
+    while True:
+        question = input(f"{Fore.GREEN}Your question:{Style.RESET_ALL} ").strip()
+
+        if question.lower() in ['quit', 'exit']:
+            print(f"{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+            break
+
+        if question.lower() == 'agents':
+            print(f"\n{Fore.CYAN}Available agents:{Style.RESET_ALL} chatgpt, claude, gemini, grok")
+            print(f"{Fore.CYAN}Current selection:{Style.RESET_ALL} {', '.join(agents_to_use)}")
+            selection = input(f"{Fore.GREEN}Enter agents (comma-separated, or 'all'):{Style.RESET_ALL} ").strip()
+
+            if selection.lower() == 'all':
+                agents_to_use = ['chatgpt', 'claude', 'gemini', 'grok']
+            else:
+                agents_to_use = [a.strip().lower() for a in selection.split(',') if a.strip()]
+
+            print(f"{Fore.GREEN}[OK] Agents updated:{Style.RESET_ALL} {', '.join(agents_to_use)}\n")
+            continue
+
+        if question.lower() == 'mode':
+            headless = not headless
+            mode = 'headless' if headless else 'headful'
+            print(f"{Fore.GREEN}[OK] Mode switched to:{Style.RESET_ALL} {mode}\n")
+            continue
+
+        if not question:
+            print(f"{Fore.RED}Please enter a question!{Style.RESET_ALL}\n")
+            continue
+
+        # Run the query
+        asyncio.run(main(question, headless, agents_to_use))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Multi-AI Aggregator - Query multiple AI models at once')
+    parser.add_argument('-q', '--question', type=str, help='Question to ask all AI models, or variable to substitute in template file (use with -f)')
+    parser.add_argument('-f', '--file', type=str, help='Read question template from file. Use {title} or {question} as placeholder')
+    parser.add_argument('--headless', action='store_true', help='Run in headless mode (no visible browser)')
+    parser.add_argument('-a', '--agents', type=str, help='Comma-separated list of agents (chatgpt,claude,gemini,grok)')
+    parser.add_argument('-i', '--interactive', action='store_true', help='Run in interactive mode')
+    parser.add_argument('--use-chrome-profile', action='store_true', default=True, help='Use your real Chrome profile (default: True)')
+    parser.add_argument('--no-chrome-profile', dest='use_chrome_profile', action='store_false', help='Do not use real Chrome profile')
+    parser.add_argument('--auto-close', action='store_true', help='Automatically close browser after completion (for API usage)')
+
+    args = parser.parse_args()
+
+    if args.interactive:
+        interactive_mode()
+    elif args.file:
+        # Read question template from file
+        try:
+            with open(args.file, 'r', encoding='utf-8') as f:
+                question_template = f.read().strip()
+
+            # If -q is provided with -f, treat -q as the variable to substitute
+            if args.question:
+                # Replace {title} and {question} placeholders with the provided value
+                question = question_template.replace('{title}', args.question).replace('{question}', args.question)
+                print(f"{Fore.CYAN}[INFO] Using template from file with title/question: {args.question}{Style.RESET_ALL}\n")
+            else:
+                # Just use the template as-is
+                question = question_template
+
+            agents = None
+            if args.agents:
+                agents = [a.strip().lower() for a in args.agents.split(',')]
+            asyncio.run(main(question, args.headless, agents, args.use_chrome_profile, args.auto_close))
+        except Exception as e:
+            print(f"{Fore.RED}Error reading file: {e}{Style.RESET_ALL}")
+    elif args.question:
+        agents = None
+        if args.agents:
+            agents = [a.strip().lower() for a in args.agents.split(',')]
+        asyncio.run(main(args.question, args.headless, agents, args.use_chrome_profile, args.auto_close))
+    else:
+        # If no arguments, start interactive mode
+        interactive_mode()

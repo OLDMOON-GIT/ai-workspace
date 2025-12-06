@@ -1,0 +1,238 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/session';
+import {
+  initAutomationTables,
+  upsertChannelSettings,
+  getChannelSettings,
+  getChannelSetting,
+  updateChannelSettings,
+  deleteChannelSettings,
+  calculateNextScheduleTime
+} from '@/lib/automation';
+
+// 테이블 초기화 (최초 1회)
+try {
+  initAutomationTables();
+} catch (error) {
+  console.error('Failed to initialize automation tables:', error);
+}
+
+// GET: 채널 설정 조회
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getCurrentUser(request);
+    if (!user || !user.isAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const channelId = searchParams.get('channelId');
+
+    if (channelId) {
+      // 특정 채널 설정 조회
+      const setting = await getChannelSetting(user.userId, channelId);
+      return NextResponse.json({ setting });
+    } else {
+      // 모든 채널 설정 조회
+      const settings = await getChannelSettings(user.userId);
+      return NextResponse.json({ settings });
+    }
+  } catch (error: any) {
+    console.error('GET /api/automation/channel-settings error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// POST: 채널 설정 추가/업데이트
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getCurrentUser(request);
+    if (!user || !user.isAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+
+    console.log('📝 [API] 받은 요청 body:', JSON.stringify(body, null, 2));
+
+    // 양쪽 형식 모두 지원 (snake_case와 camelCase)
+    const channelId = body.channelId || body.channel_id;
+    const channelName = body.channelName || body.channel_name;
+    const color = body.color;
+    const postingMode = body.postingMode || body.posting_mode;
+    const intervalValue = body.intervalValue || body.interval_value;
+    const intervalUnit = body.intervalUnit || body.interval_unit;
+    const postingTimes = body.postingTimes || body.posting_times; // 고정 주기용 시간대
+    const weekdayTimes = body.weekdayTimes || body.weekday_times;
+    const isActive = body.isActive !== undefined ? body.isActive : body.is_active;
+    const categories = body.categories;
+
+    console.log('📝 [API] 파싱된 값:', { channelId, channelName, postingMode, intervalValue, intervalUnit, postingTimes, isActive, weekdayTimes });
+
+    if (!channelId || !channelName) {
+      console.error('❌ [API] 필수 필드 누락:', { channelId, channelName });
+      return NextResponse.json(
+        { error: 'channelId and channelName are required' },
+        { status: 400 }
+      );
+    }
+
+    // 유효성 검사
+    if (postingMode === 'fixed_interval') {
+      if (!intervalValue || !intervalUnit) {
+        return NextResponse.json(
+          { error: 'intervalValue and intervalUnit are required for fixed_interval mode' },
+          { status: 400 }
+        );
+      }
+      if (!['hours', 'days'].includes(intervalUnit)) {
+        return NextResponse.json(
+          { error: 'intervalUnit must be "hours" or "days"' },
+          { status: 400 }
+        );
+      }
+
+      // postingTimes 검증 (고정 주기용 default_time, 배열 형식)
+      if (postingTimes && Array.isArray(postingTimes)) {
+        // 중복 시간 체크
+        const uniqueTimes = new Set(postingTimes);
+        if (uniqueTimes.size !== postingTimes.length) {
+          return NextResponse.json(
+            { error: '중복된 시간이 있습니다' },
+            { status: 400 }
+          );
+        }
+
+        for (const time of postingTimes) {
+          // HH:mm 형식 검증
+          if (!/^\d{2}:\d{2}$/.test(time)) {
+            return NextResponse.json(
+              { error: 'All posting times must be in HH:mm format' },
+              { status: 400 }
+            );
+          }
+
+          // 10분 단위 검증
+          const [hours, minutes] = time.split(':').map(Number);
+          if (minutes % 10 !== 0) {
+            return NextResponse.json(
+              { error: `시간은 10분 단위로만 설정 가능합니다 (${time})` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    } else if (postingMode === 'weekday_time') {
+      if (!weekdayTimes || typeof weekdayTimes !== 'object' || Object.keys(weekdayTimes).length === 0) {
+        return NextResponse.json(
+          { error: 'weekdayTimes object is required for weekday_time mode' },
+          { status: 400 }
+        );
+      }
+      // 각 요일의 시간들이 HH:mm 형식인지 검증
+      for (const [weekday, times] of Object.entries(weekdayTimes)) {
+        if (!Array.isArray(times) || times.length === 0) {
+          return NextResponse.json(
+            { error: `weekday ${weekday} must have at least one time` },
+            { status: 400 }
+          );
+        }
+
+        // 중복 시간 체크
+        const uniqueTimes = new Set(times as string[]);
+        if (uniqueTimes.size !== (times as string[]).length) {
+          return NextResponse.json(
+            { error: `weekday ${weekday}에 중복된 시간이 있습니다` },
+            { status: 400 }
+          );
+        }
+
+        for (const time of times as string[]) {
+          // HH:mm 형식 검증
+          if (!/^\d{2}:\d{2}$/.test(time)) {
+            return NextResponse.json(
+              { error: 'All posting times must be in HH:mm format' },
+              { status: 400 }
+            );
+          }
+
+          // 10분 단위 검증
+          const [hours, minutes] = time.split(':').map(Number);
+          if (minutes % 10 !== 0) {
+            return NextResponse.json(
+              { error: `시간은 10분 단위로만 설정 가능합니다 (${time})` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
+
+    const id = upsertChannelSettings({
+      userId: user.userId,
+      channelId,
+      channelName,
+      color,
+      postingMode,
+      intervalValue,
+      intervalUnit,
+      postingTimes,  // 고정 주기용 시간대
+      weekdayTimes,
+      isActive,
+      categories
+    });
+
+    return NextResponse.json({ success: true, id });
+  } catch (error: any) {
+    console.error('POST /api/automation/channel-settings error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// PATCH: 채널 설정 업데이트
+export async function PATCH(request: NextRequest) {
+  try {
+    const user = await getCurrentUser(request);
+    if (!user || !user.isAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { channelId, ...updates } = body;
+
+    if (!channelId) {
+      return NextResponse.json({ error: 'channelId is required' }, { status: 400 });
+    }
+
+    updateChannelSettings(user.userId, channelId, updates);
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('PATCH /api/automation/channel-settings error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// DELETE: 채널 설정 삭제
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await getCurrentUser(request);
+    if (!user || !user.isAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const channelId = searchParams.get('channelId');
+
+    if (!channelId) {
+      return NextResponse.json({ error: 'channelId is required' }, { status: 400 });
+    }
+
+    deleteChannelSettings(user.userId, channelId);
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('DELETE /api/automation/channel-settings error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

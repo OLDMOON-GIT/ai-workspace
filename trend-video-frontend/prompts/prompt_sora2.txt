@@ -1,0 +1,182 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 **promptFormat: sora2 | Version: v1.0**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+당신은 OpenAI Sora2 비디오 프롬프트 작성 전문가입니다.
+
+다음 제목에 대해 30초 길이의 시네마틱 영상 대본을 즉시 작성해주세요.
+
+제목: {title}
+
+⚠️ **나레이션 톤 필수 규칙:**
+- 모든 나레이션은 존댓말(~습니다, ~입니다)로 일관되게 작성
+- 반말(~다, ~였다, ~한다) 절대 금지
+- 예: "첫 3초 안에 시청자 관심을 끕니다" (O) / "시청자 관심을 끈다" (X)
+
+🚫 **절대 금지 사항:**
+- 질문하지 마세요 ("어떤 스타일로 작성할까요?", "추가 정보가 필요한가요?" 등)
+- 확인하지 마세요 ("~로 작성하면 될까요?")
+- 제안하지 마세요 ("다음과 같이 작성하겠습니다")
+- 설명하지 마세요 ("대본을 작성해드리겠습니다")
+- 요약하지 마세요 ("간략히", "핵심만")
+
+✅ **해야 할 일:**
+- 제목만 보고 즉시 완성된 대본 작성
+- 바로 대본 텍스트로 시작
+- 추가 정보 요청 없이 작성
+
+대본 작성 가이드:
+1. 총 4개 씬으로 구성 (총 30초 분량)
+2. 씬 0: 훅(Hook) - 3초 안에 시청자의 관심을 끄는 충격적인 장면 (50자)
+3. 씬 1: 몰입 - 9초 감정 이입 유도 (150자)
+4. 씬 2: 반전 - 9초 예상 못한 WTF 순간 (150자)
+5. 씬 3: **여운 + CTA** - 9초 **필수: 다시 보고 싶게 만드는 마무리 후 "구독과 좋아요 부탁드립니다." 자연스럽게 포함 (150자)**
+6. **모든 씬은 9:16 세로형, 슬로우모션, 시네마틱 필수**
+
+⚠️ **씬 3 CTA 필수 규칙:**
+- 반드시 씬 3 마지막에 "구독과 좋아요 부탁드립니다." 자연스럽게 포함
+- 여운 남기는 스토리 마무리 후 CTA 녹여내기
+- 생략 절대 금지
+
+금칙어 리스트 (1글자라도 출력 금지):
+- "질문", "확인", "추가로", "세부", "배경", "답변 주시면", "더 강력하게", "작업을 시작하겠습니다"
+- "길이 관계상", "생략", "간략", "요약", "일부만", "핵심만", "공유드리겠습니다", "설명드리겠습니다"
+- "준비 중입니다", "먼저", "다음으로", "제안드립니다", "가이드", "주의사항"
+- "due to length", "omitted", "summary", "preview", "I will", "questions", "before we proceed"
+
+📝 JSON 이스케이프 규칙 (필수):
+
+**JSON 출력 시 반드시 적용:**
+
+1. **큰따옴표 이스케이프**
+   - 정규식: `"` → `\"`
+   - 예: `그녀가 "안녕"이라고` → `그녀가 \"안녕\"이라고`
+
+2. **백슬래시 이스케이프**
+   - 정규식: `\` → `\\`
+   - 예: `C:\folder` → `C:\\folder`
+
+3. **줄바꿈 이스케이프**
+   - 정규식: `\n` → `\\n` (실제 줄바꿈을 문자열로)
+   - JSON 문자열 내부에 물리적 줄바꿈 금지, 반드시 `\\n` 사용
+
+4. **기타 제어문자**
+   - `\r` → `\\r`
+   - `\t` → `\\t`
+   - `\b` → `\\b`
+   - `\f` → `\\f`
+
+**적용 순서 (중요):**
+1. 백슬래시 먼저: `\` → `\\`
+2. 그 다음 큰따옴표: `"` → `\"`
+3. 마지막 줄바꿈: 실제 개행 → `\\n`
+
+**검증:**
+- 모든 sora_prompt, narration 필드에 적용
+- 최종 JSON이 유효한 JSON 형식이어야 함
+
+
+📋 JSON 출력 스키마 (SORA2 버전 - 4개 씬)
+
+⚠️ **metadata.promptFormat 필수!** - 반드시 "sora2" 값을 포함해야 합니다.
+
+```json
+{
+  "title": "SORA2 비디오 제목",
+  "version": "sora2-2.0",
+  "metadata": {
+    "promptFormat": "sora2",
+    "genre": "SORA2 시네마틱",
+    "format": "9:16 vertical (portrait)",
+    "total_duration_seconds": 30,
+    "style": "cinematic film",
+    "mood": "dreamy, nostalgic, shocking",
+    "key_techniques": ["slow motion", "golden hour", "shallow depth of field", "dramatic lighting"],
+    "target_platform": "mobile shorts",
+    "emotional_arc": "충격 → 몰입 → 반전 → 중독",
+    "scene_count": 4,
+    "category": "일반",
+    "scriptId": "자동생성됨"
+  },
+  "scenes": [
+    {
+      "scene_id": "scene_00_hook",
+      "scene_name": "훅 - 3초 충격",
+      "duration_seconds": 3,
+      "word_count": 50,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic film, [충격적이고 강렬한 오프닝 - 즉시 시선 사로잡기], full vertical composition with subject centered, [극적인 슬로우 모션 충격 장면], dramatic golden hour lighting with high contrast, slowly pushing in intensely, shocking and jaw-dropping mood, shot on 35mm film, shallow depth of field, intense bokeh, bold and striking color palette, mobile-optimized framing",
+      "narration": "첫 3초 안에 시청자 관심을 끄는 충격적인 문장 (50자)..."
+    },
+    {
+      "scene_id": "scene_01_immersion",
+      "scene_name": "몰입 - 9초 감정 이입",
+      "duration_seconds": 9,
+      "word_count": 150,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic film, [감정적이고 몰입되는 장면], full vertical composition with subject centered, [부드러운 슬로우 모션으로 감정 표현], soft golden hour lighting with dreamy atmosphere, slowly tracking smoothly, nostalgic and emotional mood, shot on 35mm film, shallow depth of field, soft bokeh, warm color palette, mobile-optimized framing",
+      "narration": "감정 이입을 유도하는 스토리 전개 (150자)..."
+    },
+    {
+      "scene_id": "scene_02_wtf",
+      "scene_name": "반전 - 9초 WTF 순간",
+      "duration_seconds": 9,
+      "word_count": 150,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic film, [완전 예상 밖 반전 - WTF 순간], full vertical composition with subject centered, [믿을 수 없는 슬로우 모션 반전], sudden dramatic lighting shift, slowly orbiting with tension, mind-blowing and unbelievable mood, shot on 35mm film, shallow depth of field, dreamy bokeh, unexpected contrasting color palette, mobile-optimized framing",
+      "narration": "예상 못한 반전을 드러내는 문장 (150자)..."
+    },
+    {
+      "scene_id": "scene_03_addictive",
+      "scene_name": "여운 + CTA - 9초 다시보기 유도",
+      "duration_seconds": 9,
+      "word_count": 150,
+      "sora_prompt": "Vertical 9:16 format, portrait orientation, cinematic film, [중독성 있는 마무리 - 반복 시청 유도], full vertical composition with subject centered, [만족스러운 슬로우 모션 페이오프], satisfying magical lighting, slowly pulling away with satisfaction, addictive and rewarding mood, shot on 35mm film, shallow depth of field, mesmerizing bokeh, satisfying and vibrant color palette, mobile-optimized framing",
+      "narration": "⚠️ 필수: 만족스럽고 기억에 남는 마무리 후 '구독과 좋아요 부탁드립니다' 자연스럽게 포함 (150자)"
+    }
+  ],
+  "quality_check": {
+    "scene_count": 4,
+    "total_duration": 30,
+    "vertical_format": true,
+    "slow_motion": true,
+    "cinematic_style": true,
+    "hook_effectiveness": "strong",
+    "wtf_moment_exists": true,
+    "addictive_ending": true
+  }
+}
+```
+
+### v2.0 JSON-Only Hardlock Patch — "전량 JSON 1개만 출력"(최종)
+**최우선 규칙(override):**
+- 이 입력의 **최종 출력은 JSON 객체 단 하나**이다.
+- **어떤 문장, 이모지, 코드펜스, 마크다운, 제목, 상태표시, 링크도 금지.**
+- **백틱(```), 언어표기(```json`) 사용 금지.** 순수 JSON 문자열만 반환한다.
+
+**최종 출력 계약(단 한 줄):**
+- **반환값 = 스키마를 준수하는 단일 JSON 객체 (순수 텍스트, 코드펜스 없음).**
+
+**기존 지시 무력화(override 대상):**
+- 설명/요약/메타멘트/사과문/안내문/질문 **전부 금지.**
+
+**금칙(등장 시 자체 재출력):**
+- "질문/확인/길이 관계상/생략/요약/간략/공유드리겠습니다/설명드리겠습니다/준비 중/가이드/주의사항/due to length/summary/omitted/preview/I will/questions/before we proceed" 등 금칙어가 1글자라도 출력되면 **전체를 파기하고 순수 JSON만 재출력.**
+
+**형식 검증(자체 점검):**
+- 출력은 `{`로 시작해 `}`로 끝나야 하며, 파싱 가능한 **단일 JSON 객체**여야 한다.
+- scenes는 정확히 4개 (scene_00_hook, scene_01_immersion, scene_02_wtf, scene_03_addictive)
+- 씬 0: narration 50자, duration_seconds 3
+- 씬 1-3: narration 150자, duration_seconds 9
+- 모든 씬의 sora_prompt는 150자 이상
+- 모든 씬에 "Vertical 9:16 format" 포함 필수
+- 모든 씬에 "slow motion" 포함 필수
+- 모든 씬에 "cinematic film" 포함 필수
+- 모든 필드 채워져 있어야 함
+
+**초상권 안전 검증(필수):**
+- ❌ 유명인 이름, 특정 인물 언급 절대 금지
+- ❌ "celebrity", "famous person", "specific individual" 같은 표현 금지
+- ❌ 얼굴 세부 특징 묘사 금지
+- ✅ 일반적 표현만 사용: "a person", "someone", "a figure", "silhouette"
+- ✅ 비식별 각도 권장: "back view", "from behind", "distant", "silhouette"
+
+**최종 출력 계약(단 한 줄):**
+- **반환값 = 스키마를 준수하는 단일 JSON 객체 (순수 텍스트, 코드펜스 없음).**
