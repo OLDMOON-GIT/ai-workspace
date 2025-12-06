@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ABC Choice - Pattern Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .choice-btn { transition: all 0.2s; }
+    .choice-btn:hover { transform: scale(1.05); }
+    .choice-btn:active { transform: scale(0.95); }
+    .history-item { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .pulse { animation: pulse 1.5s infinite; }
+  </style>
+</head>
+<body class="bg-gray-900 min-h-screen text-white">
+  <div class="container mx-auto px-4 py-8 max-w-4xl">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold bg-gradient-to-r from-blue-400 to-red-400 bg-clip-text text-transparent">
+        ABC Choice
+      </h1>
+      <p class="text-gray-400 mt-2">Pattern Analyzer</p>
+    </div>
+
+    <!-- Session Selector -->
+    <div class="bg-gray-800 rounded-xl p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">세션</h2>
+        <button onclick="showNewSessionModal()" class="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg text-sm">
+          + 새 세션
+        </button>
+      </div>
+      <select id="sessionSelect" onchange="loadSession()" class="w-full bg-gray-700 rounded-lg px-4 py-3 text-white">
+        <option value="">세션을 선택하세요</option>
+      </select>
+    </div>
+
+    <!-- Main Panel (hidden until session selected) -->
+    <div id="mainPanel" class="hidden">
+      <!-- Recommendation -->
+      <div class="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">추천</h2>
+        <div class="flex items-center justify-center gap-8">
+          <div id="recommendation" class="text-center">
+            <div id="recommendedChoice" class="text-8xl font-bold mb-2">-</div>
+            <div id="confidence" class="text-2xl text-gray-400">신뢰도: --%</div>
+            <div id="reason" class="text-sm text-gray-500 mt-2">데이터를 입력하세요</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Buttons -->
+      <div class="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">결과 입력</h2>
+        <div class="flex gap-4 justify-center">
+          <button onclick="addResult('B')" class="choice-btn bg-blue-600 hover:bg-blue-500 text-white text-4xl font-bold py-6 px-12 rounded-2xl shadow-lg shadow-blue-600/30">
+            B
+          </button>
+          <button onclick="addResult('R')" class="choice-btn bg-red-600 hover:bg-red-500 text-white text-4xl font-bold py-6 px-12 rounded-2xl shadow-lg shadow-red-600/30">
+            R
+          </button>
+        </div>
+        <div class="mt-4 text-center">
+          <button onclick="showImportModal()" class="text-gray-400 hover:text-white text-sm underline">
+            기록 한번에 입력
+          </button>
+        </div>
+      </div>
+
+      <!-- Statistics -->
+      <div class="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">통계</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-gray-700 rounded-lg p-4 text-center">
+            <div id="statTotal" class="text-3xl font-bold">0</div>
+            <div class="text-gray-400 text-sm">총 라운드</div>
+          </div>
+          <div class="bg-gray-700 rounded-lg p-4 text-center">
+            <div id="statBlue" class="text-3xl font-bold text-blue-400">0</div>
+            <div class="text-gray-400 text-sm">Blue</div>
+          </div>
+          <div class="bg-gray-700 rounded-lg p-4 text-center">
+            <div id="statRed" class="text-3xl font-bold text-red-400">0</div>
+            <div class="text-gray-400 text-sm">Red</div>
+          </div>
+          <div class="bg-gray-700 rounded-lg p-4 text-center">
+            <div id="statAccuracy" class="text-3xl font-bold text-green-400">--%</div>
+            <div class="text-gray-400 text-sm">예측 정확도</div>
+          </div>
+        </div>
+        <!-- Progress bars -->
+        <div class="mt-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-blue-400 w-8">B</span>
+            <div class="flex-1 bg-gray-700 rounded-full h-4">
+              <div id="blueBar" class="bg-blue-500 h-4 rounded-full transition-all" style="width: 50%"></div>
+            </div>
+            <span id="bluePercent" class="text-gray-400 w-16 text-right">50%</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-red-400 w-8">R</span>
+            <div class="flex-1 bg-gray-700 rounded-full h-4">
+              <div id="redBar" class="bg-red-500 h-4 rounded-full transition-all" style="width: 50%"></div>
+            </div>
+            <span id="redPercent" class="text-gray-400 w-16 text-right">50%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="bg-gray-800 rounded-xl p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-semibold">기록</h2>
+          <button onclick="clearHistory()" class="text-red-400 hover:text-red-300 text-sm">
+            기록 초기화
+          </button>
+        </div>
+        <div id="history" class="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+          <span class="text-gray-500">기록이 없습니다</span>
+        </div>
+      </div>
+
+      <!-- Patterns -->
+      <div class="bg-gray-800 rounded-xl p-6">
+        <h2 class="text-xl font-semibold mb-4">감지된 패턴</h2>
+        <div id="patterns" class="space-y-2">
+          <span class="text-gray-500">패턴이 없습니다</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Session Modal -->
+    <div id="newSessionModal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50">
+      <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+        <h3 class="text-xl font-semibold mb-4">새 세션 만들기</h3>
+        <input type="text" id="newSessionName" placeholder="세션 이름"
+               class="w-full bg-gray-700 rounded-lg px-4 py-3 mb-4">
+        <input type="text" id="newSessionUrl" placeholder="사이트 URL (선택)"
+               class="w-full bg-gray-700 rounded-lg px-4 py-3 mb-4">
+        <div class="flex gap-2 justify-end">
+          <button onclick="hideNewSessionModal()" class="px-4 py-2 bg-gray-600 rounded-lg">취소</button>
+          <button onclick="createSession()" class="px-4 py-2 bg-purple-600 rounded-lg">생성</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="fixed inset-0 bg-black/60 flex items-center justify-center hidden z-50">
+      <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+        <h3 class="text-xl font-semibold mb-4">기록 입력</h3>
+        <p class="text-gray-400 text-sm mb-2">B와 R을 연속으로 입력 (예: BRRBBRBR)</p>
+        <textarea id="importHistory" placeholder="BRRBBRBR..." rows="4"
+                  class="w-full bg-gray-700 rounded-lg px-4 py-3 mb-4 font-mono"></textarea>
+        <div class="flex gap-2 justify-end">
+          <button onclick="hideImportModal()" class="px-4 py-2 bg-gray-600 rounded-lg">취소</button>
+          <button onclick="importHistory()" class="px-4 py-2 bg-purple-600 rounded-lg">입력</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+    let currentSessionId = null;
+    let currentPrediction = null;
+
+    // 초기화
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSessions();
+    });
+
+    // 세션 목록 로드
+    async function loadSessions() {
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions`);
+        const data = await res.json();
+        const select = document.getElementById('sessionSelect');
+        select.innerHTML = '<option value="">세션을 선택하세요</option>';
+        for (const session of data.sessions) {
+          select.innerHTML += `<option value="${session.id}">${session.name} (${session.recordCount}건)</option>`;
+        }
+      } catch (error) {
+        console.error('Failed to load sessions:', error);
+      }
+    }
+
+    // 세션 로드
+    async function loadSession() {
+      const select = document.getElementById('sessionSelect');
+      const sessionId = select.value;
+
+      if (!sessionId) {
+        document.getElementById('mainPanel').classList.add('hidden');
+        currentSessionId = null;
+        return;
+      }
+
+      currentSessionId = parseInt(sessionId);
+      document.getElementById('mainPanel').classList.remove('hidden');
+      await refreshData();
+    }
+
+    // 데이터 새로고침
+    async function refreshData() {
+      if (!currentSessionId) return;
+
+      try {
+        // 기록 및 통계
+        const recordsRes = await fetch(`${API_BASE}/api/sessions/${currentSessionId}/records`);
+        const recordsData = await recordsRes.json();
+        updateHistory(recordsData.records);
+        updateStats(recordsData.stats);
+
+        // 분석
+        const analysisRes = await fetch(`${API_BASE}/api/sessions/${currentSessionId}/analyze`);
+        const analysisData = await analysisRes.json();
+        updateRecommendation(analysisData.analysis);
+        currentPrediction = analysisData.analysis.recommendedChoice;
+      } catch (error) {
+        console.error('Failed to refresh data:', error);
+      }
+    }
+
+    // 결과 추가
+    async function addResult(result) {
+      if (!currentSessionId) {
+        alert('세션을 먼저 선택하세요');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/${currentSessionId}/records`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result, predicted: currentPrediction })
+        });
+        const data = await res.json();
+
+        updateRecommendation(data.analysis);
+        updateStats(data.stats);
+        currentPrediction = data.analysis.recommendedChoice;
+
+        await refreshData();
+      } catch (error) {
+        console.error('Failed to add result:', error);
+        alert('결과 추가 실패');
+      }
+    }
+
+    // 추천 업데이트
+    function updateRecommendation(analysis) {
+      const choiceEl = document.getElementById('recommendedChoice');
+      const confidenceEl = document.getElementById('confidence');
+      const reasonEl = document.getElementById('reason');
+
+      choiceEl.textContent = analysis.recommendedChoice;
+      choiceEl.className = `text-8xl font-bold mb-2 ${analysis.recommendedChoice === 'B' ? 'text-blue-400' : 'text-red-400'}`;
+      confidenceEl.textContent = `신뢰도: ${analysis.confidence.toFixed(1)}%`;
+      reasonEl.textContent = analysis.reason;
+
+      // 패턴 업데이트
+      const patternsEl = document.getElementById('patterns');
+      if (analysis.patterns && analysis.patterns.length > 0) {
+        patternsEl.innerHTML = analysis.patterns.map(p => `
+          <div class="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+            <span class="font-mono text-lg">${formatPattern(p.pattern)}</span>
+            <span class="text-sm">
+              → <span class="${p.nextChoice === 'B' ? 'text-blue-400' : 'text-red-400'} font-bold">${p.nextChoice}</span>
+              <span class="text-gray-400 ml-2">(${p.confidence.toFixed(0)}%, ${p.occurrences}회)</span>
+            </span>
+          </div>
+        `).join('');
+      } else {
+        patternsEl.innerHTML = '<span class="text-gray-500">패턴이 없습니다</span>';
+      }
+    }
+
+    // 패턴 포맷 (색상 적용)
+    function formatPattern(pattern) {
+      return pattern.split('').map(c =>
+        `<span class="${c === 'B' ? 'text-blue-400' : 'text-red-400'}">${c}</span>`
+      ).join('');
+    }
+
+    // 통계 업데이트
+    function updateStats(stats) {
+      document.getElementById('statTotal').textContent = stats.totalRounds;
+      document.getElementById('statBlue').textContent = stats.blueCount;
+      document.getElementById('statRed').textContent = stats.redCount;
+      document.getElementById('statAccuracy').textContent = `${stats.accuracy.toFixed(1)}%`;
+
+      const total = stats.blueCount + stats.redCount;
+      const bluePercent = total > 0 ? (stats.blueCount / total * 100) : 50;
+      const redPercent = total > 0 ? (stats.redCount / total * 100) : 50;
+
+      document.getElementById('blueBar').style.width = `${bluePercent}%`;
+      document.getElementById('redBar').style.width = `${redPercent}%`;
+      document.getElementById('bluePercent').textContent = `${bluePercent.toFixed(1)}%`;
+      document.getElementById('redPercent').textContent = `${redPercent.toFixed(1)}%`;
+    }
+
+    // 기록 업데이트
+    function updateHistory(records) {
+      const historyEl = document.getElementById('history');
+      if (records.length === 0) {
+        historyEl.innerHTML = '<span class="text-gray-500">기록이 없습니다</span>';
+        return;
+      }
+
+      historyEl.innerHTML = records.map((r, i) => {
+        const bgColor = r.result === 'B' ? 'bg-blue-600' : 'bg-red-600';
+        const border = r.isCorrect === true ? 'ring-2 ring-green-400' :
+                       r.isCorrect === false ? 'ring-2 ring-yellow-400' : '';
+        return `<span class="history-item ${bgColor} ${border} w-8 h-8 rounded flex items-center justify-center text-sm font-bold" title="Round ${i+1}">${r.result}</span>`;
+      }).join('');
+    }
+
+    // 기록 초기화
+    async function clearHistory() {
+      if (!currentSessionId) return;
+      if (!confirm('기록을 모두 삭제하시겠습니까?')) return;
+
+      try {
+        await fetch(`${API_BASE}/api/sessions/${currentSessionId}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ history: [] })
+        });
+        await refreshData();
+      } catch (error) {
+        console.error('Failed to clear history:', error);
+      }
+    }
+
+    // 새 세션 모달
+    function showNewSessionModal() {
+      document.getElementById('newSessionModal').classList.remove('hidden');
+      document.getElementById('newSessionName').focus();
+    }
+
+    function hideNewSessionModal() {
+      document.getElementById('newSessionModal').classList.add('hidden');
+      document.getElementById('newSessionName').value = '';
+      document.getElementById('newSessionUrl').value = '';
+    }
+
+    async function createSession() {
+      const name = document.getElementById('newSessionName').value.trim();
+      const siteUrl = document.getElementById('newSessionUrl').value.trim();
+
+      if (!name) {
+        alert('세션 이름을 입력하세요');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, siteUrl })
+        });
+        const data = await res.json();
+
+        hideNewSessionModal();
+        await loadSessions();
+
+        // 새로 생성된 세션 선택
+        document.getElementById('sessionSelect').value = data.id;
+        await loadSession();
+      } catch (error) {
+        console.error('Failed to create session:', error);
+        alert('세션 생성 실패');
+      }
+    }
+
+    // 기록 입력 모달
+    function showImportModal() {
+      document.getElementById('importModal').classList.remove('hidden');
+      document.getElementById('importHistory').focus();
+    }
+
+    function hideImportModal() {
+      document.getElementById('importModal').classList.add('hidden');
+      document.getElementById('importHistory').value = '';
+    }
+
+    async function importHistory() {
+      if (!currentSessionId) return;
+
+      const input = document.getElementById('importHistory').value.toUpperCase().replace(/[^BR]/g, '');
+      if (!input) {
+        alert('B와 R로 이루어진 기록을 입력하세요');
+        return;
+      }
+
+      const history = input.split('');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/${currentSessionId}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ history })
+        });
+        const data = await res.json();
+
+        hideImportModal();
+        updateRecommendation(data.analysis);
+        updateStats(data.stats);
+        currentPrediction = data.analysis.recommendedChoice;
+        await refreshData();
+      } catch (error) {
+        console.error('Failed to import history:', error);
+        alert('기록 입력 실패');
+      }
+    }
+  </script>
+</body>
+</html>

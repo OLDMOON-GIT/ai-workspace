@@ -1,0 +1,37 @@
+{
+  "name": "abc-choice",
+  "version": "1.0.0",
+  "description": "Blue/Red Pattern Analyzer",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
+    "test": "ts-node src/test.ts",
+    "play-pokerstars": "ts-node src/pokerstars-bot.ts",
+    "play-watch": "nodemon --watch src --ext ts --exec \"ts-node src/pokerstars-bot.ts\""
+  },
+  "keywords": [
+    "pattern",
+    "analyzer"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.10.1",
+    "@types/pngjs": "^6.0.5",
+    "better-sqlite3": "^12.5.0",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "playwright": "^1.57.0",
+    "pngjs": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
