@@ -7,7 +7,11 @@
  */
 
 import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
+import { fileURLToPath } from 'url';
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+// 프로젝트 루트의 node_modules를 찾도록 경로 설정
+const projectRoot = __dirname.replace(/[/\\]dist[/\\]?$/, '').replace(/[/\\]src[/\\]?$/, '');
+const require = createRequire(projectRoot + '/package.json');
 const Database = require('better-sqlite3');
 import path from 'path';
 import fs from 'fs';
