@@ -73,3 +73,25 @@ automation/nul
 mcp-debugger/nul
 
 nul
+
+# General database files
+*.db
+*.db-journal
+
+# Specific data and cache directories
+abc-choice/data/
+mcp-memory-manager/data/
+automation/.code-guardian-*.json
+automation/.log-monitor-position
+
+# Temporary and backup files
+*.bak
+*.old
+*.tmp
+temp_*.md
+temp_*.txt
+*-prompt.txt
+.prompt-dispatch-*.txt
+
+# Test artifacts
+test-cli-results.json
