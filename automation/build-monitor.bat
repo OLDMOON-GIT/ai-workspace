@@ -2,6 +2,7 @@
 REM ============================================================
 REM build-monitor.bat - 30분마다 빌드 체크 및 서버 재시작
 REM BTS-14862: 빌드 에러 감지 시 버그 등록 + 서버 재시작
+REM BTS-14964: 폴더 존재 확인 추가
 REM ============================================================
 
 chcp 65001 >nul
@@ -23,6 +24,24 @@ timeout /t 300 /nobreak >nul
 
 :LOOP
 echo [%date% %time%] 빌드 체크 시작...
+
+REM 폴더 존재 확인 (BTS-14964)
+if not exist "%FRONTEND_PATH%" (
+    echo [스킵] %FRONTEND_PATH% 폴더가 존재하지 않습니다.
+    echo [다음 체크] 30분 후...
+    echo.
+    timeout /t %CHECK_INTERVAL% /nobreak >nul
+    goto LOOP
+)
+
+REM package.json 존재 확인 (BTS-14964)
+if not exist "%FRONTEND_PATH%\package.json" (
+    echo [스킵] %FRONTEND_PATH%\package.json이 존재하지 않습니다.
+    echo [다음 체크] 30분 후...
+    echo.
+    timeout /t %CHECK_INTERVAL% /nobreak >nul
+    goto LOOP
+)
 
 REM 빌드 실행
 cd /d "%FRONTEND_PATH%"

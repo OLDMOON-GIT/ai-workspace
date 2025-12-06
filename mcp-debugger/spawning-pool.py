@@ -2,9 +2,9 @@
 """
 Spawning Pool v2.4 - 지능형 라우팅 시스템 + 행(Hang) 감지
 
-⚠️ 이 파일 수정 금지! 회귀 감지용 버전: 2.4-20251206
-⚠️ BTS-3463: 설정 회귀 방지를 위해 버전 명시
-⚠️ SHA256: (Code Guardian 모니터링 중)
+[!] 이 파일 수정 금지! 회귀 감지용 버전: 2.4-20251206
+[!] BTS-3463: 설정 회귀 방지를 위해 버전 명시
+[!] SHA256: (Code Guardian 모니터링 중)
 
 구조:
 1. Dispatcher (Claude): 작업 분류 및 라우팅 결정
@@ -53,10 +53,12 @@ from enum import Enum
 # ============================================================
 
 DB_CONFIG = {
-    'host': os.environ.get('DB_HOST', 'localhost'),
+    'host': os.environ.get('TREND_DB_HOST', '127.0.0.1'),
+    'port': int(os.environ.get('TREND_DB_PORT', '3306')),
     'user': os.environ.get('DB_USER', 'root'),
     'password': os.environ.get('DB_PASSWORD', 'trend2024'),
-    'database': os.environ.get('DB_NAME', 'trend_video')
+    'database': os.environ.get('DB_NAME', 'trend_video'),
+    'use_pure': True
 }
 
 # Worker 설정 - Claude 4, Gemini 2, Codex 2 = 총 8개 (BTS-3463)
@@ -302,7 +304,7 @@ def zombie_monitor_thread():
                         elapsed_min = int(elapsed / 60)
                         log_info = f', 마지막 로그: {int(log_inactivity)}초 전' if log_inactivity else ''
                         warning_msg = f'BTS-{bug_id} ({title}...) - {elapsed_min}분 경과 (PID: {worker_pid}{log_info})'
-                        print(f'  [HANG] ⚠️ 장시간 작업 경고! {warning_msg}')
+                        print(f'  [HANG] [!] 장시간 작업 경고! {warning_msg}')
                         write_zombie_log(f'[TIMEOUT_WARNING] {warning_msg}')
                         with zombie_stats_lock:
                             zombie_stats['timeouts'] += 1
@@ -352,9 +354,9 @@ def check_rate_limit(output: str, worker_type: str) -> bool:
             # BTS-3738: 리미트 해제 시간 파싱 시도
             reset_time = parse_rate_limit_reset_time(output)
             if reset_time:
-                print(f'  ⚠️ {worker_type.upper()} API RATE LIMIT! 해제 예정: {reset_time}')
+                print(f'  [!] {worker_type.upper()} API RATE LIMIT! 해제 예정: {reset_time}')
             else:
-                print(f'  ⚠️ {worker_type.upper()} API RATE LIMIT 감지!')
+                print(f'  [!] {worker_type.upper()} API RATE LIMIT 감지!')
             return True
     return False
 
@@ -928,7 +930,7 @@ def main_loop():
     print('')
     print('=' * 64)
     print('       Spawning Pool v2.4 - Intelligent Routing + Hang Detection')
-    print('       ⚠️ Version 2.4-20251206 (BTS-3411 + BTS-14819)')
+    print('       [!] Version 2.4-20251206 (BTS-3411 + BTS-14819)')
     print('=' * 64)
     print(f'  Workers: Claude x{WORKER_CONFIG["claude"]["count"]}, '
           f'Gemini x{WORKER_CONFIG["gemini"]["count"]}, '

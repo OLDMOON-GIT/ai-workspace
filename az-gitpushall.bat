@@ -1,8 +1,13 @@
 @echo off
 setlocal
 
-REM --- Main Project Sync ---
+REM --- Main Project Sync (Push) ---
 echo [1/1] Syncing Main Project...
+
+echo.
+echo    - Current Directory: %CD%
+git rev-parse --show-toplevel
+echo    - PATH: %PATH%
 
 echo.
 echo    - Staging all files...
@@ -13,14 +18,14 @@ if errorlevel 1 (
 )
 
 echo    - Committing changes...
-git commit -m "Automated update via up.bat" --allow-empty
+git commit -m "Automated update via az-gitpushall.bat" --allow-empty
 if errorlevel 1 (
     echo [ERROR] 'git commit' failed. Aborting script.
     goto :error
 )
 
 echo    - Pushing to remote...
-git push
+git push origin master
 if errorlevel 1 (
     echo [ERROR] 'git push' failed. Please check your connection and remote repository.
     goto :error

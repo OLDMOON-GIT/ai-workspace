@@ -15,9 +15,10 @@ const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
 
-// MySQL ?곌껐 ?ㅼ젙
+// MySQL 접속 설정
 const DB_CONFIG = {
-  host: 'localhost',
+  host: process.env.TREND_DB_HOST || '127.0.0.1',
+  port: parseInt(process.env.TREND_DB_PORT) || 3306,
   user: 'root',
   password: 'trend2024',
   database: 'trend_video',

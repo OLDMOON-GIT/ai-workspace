@@ -15,7 +15,8 @@
 const mysql = require('mysql2/promise');
 
 const dbConfig = {
-  host: 'localhost',
+  host: process.env.TREND_DB_HOST || '127.0.0.1',
+  port: parseInt(process.env.TREND_DB_PORT) || 3306,
   user: 'root',
   password: 'trend2024',
   database: 'trend_video'

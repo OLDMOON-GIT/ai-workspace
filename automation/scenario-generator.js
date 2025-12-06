@@ -6,7 +6,8 @@
 const mysql = require("mysql2/promise");
 
 const dbConfig = {
-  host: process.env.DB_HOST || "localhost",
+  host: process.env.TREND_DB_HOST || "127.0.0.1",
+  port: parseInt(process.env.TREND_DB_PORT) || 3306,
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "trend2024",
   database: process.env.DB_NAME || "trend_video"

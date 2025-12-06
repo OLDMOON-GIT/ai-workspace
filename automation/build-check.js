@@ -19,7 +19,8 @@ const FRONTEND_PATH = path.join(__dirname, '..', 'trend-video-frontend');
 const CHECK_INTERVAL = 5 * 60 * 1000; // 5분
 
 const dbConfig = {
-  host: 'localhost',
+  host: process.env.TREND_DB_HOST || '127.0.0.1',
+  port: parseInt(process.env.TREND_DB_PORT) || 3306,
   user: 'root',
   password: 'trend2024',
   database: 'trend_video'

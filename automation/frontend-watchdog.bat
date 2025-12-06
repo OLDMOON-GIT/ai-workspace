@@ -1,20 +1,24 @@
 @echo off
 REM ============================================================
 REM Frontend Watchdog - 프론트엔드 서버 헬스체크 및 자동 재시작
-REM SPEC-3462: 5분 간격으로 localhost:2000 감시
+REM SPEC-3462: 5분 간격으로 localhost 감시 (포트는 환경변수)
 REM BTS-14940: 초기 대기 및 잠금 파일로 충돌 방지
 REM ============================================================
 title Frontend Watchdog (5min interval)
 
 chcp 65001 >nul
+setlocal enabledelayedexpansion
 cd /d C:\Users\oldmoon\workspace
+
+REM 환경변수가 없으면 기본값 사용
+if not defined TREND_HTTP_PORT set TREND_HTTP_PORT=2000
 
 set LOCKFILE=C:\Users\oldmoon\workspace\automation\.frontend-restart.lock
 
 echo ============================================================
 echo   Frontend Watchdog Started
 echo   Interval: 5 minutes (300 seconds)
-echo   Target: http://localhost:2000
+echo   Target: http://localhost:%TREND_HTTP_PORT%
 echo   Press Ctrl+C to stop
 echo ============================================================
 echo.
@@ -27,10 +31,10 @@ echo.
 
 :LOOP
 echo [%date% %time%] ========================================
-echo [%date% %time%] Health check: localhost:2000
+echo [%date% %time%] Health check: localhost:%TREND_HTTP_PORT%
 
 REM PowerShell로 헬스체크 (3초 타임아웃)
-powershell -Command "$ProgressPreference='SilentlyContinue'; try { $response = Invoke-WebRequest -Uri 'http://localhost:2000' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop; if ($response.StatusCode -eq 200) { Write-Host '[OK] Frontend is running (HTTP 200)'; exit 0 } else { Write-Host '[WARN] Unexpected status:' $response.StatusCode; exit 1 } } catch { Write-Host '[ERROR] Frontend is DOWN:' $_.Exception.Message; exit 1 }"
+powershell -Command "$port = $env:TREND_HTTP_PORT; if (-not $port) { $port = '2000' }; $ProgressPreference='SilentlyContinue'; try { $response = Invoke-WebRequest -Uri \"http://localhost:$port\" -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop; if ($response.StatusCode -eq 200) { Write-Host '[OK] Frontend is running (HTTP 200)'; exit 0 } else { Write-Host '[WARN] Unexpected status:' $response.StatusCode; exit 1 } } catch { Write-Host '[ERROR] Frontend is DOWN:' $_.Exception.Message; exit 1 }"
 
 if %errorlevel% NEQ 0 (
     echo.
@@ -38,9 +42,9 @@ if %errorlevel% NEQ 0 (
     echo ============================================================
 
     REM 1. 기존 프로세스 종료
-    echo [1/3] Killing existing processes on port 2000...
+    echo [1/3] Killing existing processes on port %TREND_HTTP_PORT%...
     taskkill /FI "WINDOWTITLE eq Trend Video Frontend*" /F >nul 2>&1
-    powershell -Command "Get-NetTCPConnection -LocalPort 2000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+    powershell -Command "$port = $env:TREND_HTTP_PORT; if (-not $port) { $port = '2000' }; Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
     timeout /t 3 /nobreak >nul
 
     REM 2. .next 캐시 삭제 (문제 방지)
@@ -54,8 +58,9 @@ if %errorlevel% NEQ 0 (
     cd /d C:\Users\oldmoon\workspace\trend-video-frontend
 
     REM BTS-14647: 콘솔 출력을 로그 파일로 저장 (빌드 에러 감지용)
+    REM 환경변수 PORT 설정하여 Next.js에 전달
     if not exist "logs" mkdir logs
-    start "Trend Video Frontend" powershell -Command "npm run dev 2>&1 | Tee-Object -FilePath 'logs\console.log' -Append"
+    start "Trend Video Frontend" cmd /c "set PORT=%TREND_HTTP_PORT% && npm run dev 2>&1 | powershell -Command \"$input | Tee-Object -FilePath 'logs\console.log' -Append\""
     cd /d C:\Users\oldmoon\workspace
 
     echo.
