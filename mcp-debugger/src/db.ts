@@ -8,10 +8,14 @@
 
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-// 프로젝트 루트의 node_modules를 찾도록 경로 설정
-const projectRoot = __dirname.replace(/[/\\]dist[/\\]?$/, '').replace(/[/\\]src[/\\]?$/, '');
-const require = createRequire(pathToFileURL(projectRoot + '/package.json'));
+import { dirname, join } from 'path';
+
+// import.meta.url에서 프로젝트 루트 계산
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// dist 또는 src 폴더의 부모 = 프로젝트 루트
+const projectRoot = dirname(__dirname);
+const require = createRequire(pathToFileURL(join(projectRoot, 'package.json')));
 const Database = require('better-sqlite3');
 import path from 'path';
 import fs from 'fs';
